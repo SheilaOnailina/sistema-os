@@ -5,7 +5,7 @@ export type PrioridadeOS = "BAIXA" | "NORMAL" | "ALTA" | "URGENTE";
 export type StatusOcorrencia =
   | "AGUARDANDO_AVALIACAO"
   | "GEROU_OS"
-  | "ARQUIVADA"
+  | "REGISTRADA_CIENTE"
   | string;
 
 export type Colaborador = {

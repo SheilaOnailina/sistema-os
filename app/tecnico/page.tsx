@@ -26,7 +26,8 @@ type ResultadoServico = "REALIZADO" | "INCOMPLETO" | "";
 const statusOcorrenciaLabels: Record<string, string> = {
   AGUARDANDO_AVALIACAO: "Em avaliacao",
   GEROU_OS: "Virou OS",
-  ARQUIVADA: "Arquivada",
+  ARQUIVADA: "Registrada / ciente",
+  REGISTRADA_CIENTE: "Registrada / ciente",
 };
 
 function getErrorMessage(error: unknown) {

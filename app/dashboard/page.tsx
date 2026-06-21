@@ -534,9 +534,9 @@ export default function DashboardPage() {
     }
   }
 
-  async function arquivarOcorrencia(ocorrencia: Ocorrencia) {
+  async function registrarCienciaOcorrencia(ocorrencia: Ocorrencia) {
     const confirmou = window.confirm(
-      `Arquivar a ocorrencia #${ocorrencia.numero_ocorrencia}?`,
+      `Registrar ciencia da ocorrencia #${ocorrencia.numero_ocorrencia}?`,
     );
 
     if (!confirmou) return;
@@ -561,7 +561,7 @@ export default function DashboardPage() {
       setColaboradores(dados.colaboradores);
       setErro(null);
     } catch (error) {
-      console.error("Erro ao arquivar ocorrencia:", error);
+      console.error("Erro ao registrar ciencia da ocorrencia:", error);
       setErro(getErrorMessage(error));
     } finally {
       setAvaliandoOcorrenciaId(null);
@@ -871,11 +871,11 @@ export default function DashboardPage() {
                     </button>
                     <button
                       type="button"
-                      onClick={() => arquivarOcorrencia(ocorrencia)}
+                      onClick={() => registrarCienciaOcorrencia(ocorrencia)}
                       disabled={avaliandoOcorrenciaId === ocorrencia.id}
                       className="h-10 rounded-md border border-slate-300 px-3 text-sm font-bold text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
                     >
-                      Arquivar
+                      Registrar ciencia
                     </button>
                   </div>
                 </div>

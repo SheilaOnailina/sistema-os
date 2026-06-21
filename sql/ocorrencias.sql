@@ -181,7 +181,7 @@ as $$
 begin
   update public.ocorrencias
   set
-    status = 'ARQUIVADA',
+    status = 'REGISTRADA_CIENTE',
     avaliado_em = now(),
     avaliado_por_gestor_id = gestor_id_input,
     observacao_gestor = observacao_input
@@ -193,6 +193,10 @@ end;
 $$;
 
 grant execute on function public.arquivar_ocorrencia(uuid, uuid, text) to anon;
+
+update public.ocorrencias
+set status = 'REGISTRADA_CIENTE'
+where status = 'ARQUIVADA';
 
 drop function if exists public.cadastrar_colaborador(text, text, text, text);
 
