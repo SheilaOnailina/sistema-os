@@ -12,6 +12,7 @@ import {
   RefreshCw,
   UserRound,
   X,
+  ChevronDown,
 } from "lucide-react";
 import {
   getSupabase,
@@ -148,6 +149,8 @@ export default function PainelTecnicoIndividualPage() {
   const [carregando, setCarregando] = useState(true);
   const [atualizando, setAtualizando] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
+  const [mostrarHistoricoOcorrencias, setMostrarHistoricoOcorrencias] =
+    useState(false);
 
   function voltarParaLista() {
     setOsSelecionada(null);
@@ -231,6 +234,18 @@ export default function PainelTecnicoIndividualPage() {
       ).length,
     };
   }, [listaOS, listaOcorrencias]);
+
+  const ocorrenciasPendentes = useMemo(() => {
+    return listaOcorrencias.filter(
+      (ocorrencia) => ocorrencia.status === "AGUARDANDO_AVALIACAO",
+    );
+  }, [listaOcorrencias]);
+
+  const ocorrenciasHistorico = useMemo(() => {
+    return listaOcorrencias.filter(
+      (ocorrencia) => ocorrencia.status !== "AGUARDANDO_AVALIACAO",
+    );
+  }, [listaOcorrencias]);
 
   async function iniciarDemanda(id: string) {
     const supabase = getSupabase();
@@ -523,20 +538,20 @@ export default function PainelTecnicoIndividualPage() {
               <div className="border-t border-slate-100 pt-4">
                 <div className="mb-3 flex items-center justify-between">
                   <h2 className="text-sm font-bold text-slate-800">
-                    Minhas ocorrencias
+                    Ocorrencias em avaliacao
                   </h2>
                   <span className="text-xs font-semibold text-slate-400">
-                    {listaOcorrencias.length} registro(s)
+                    {ocorrenciasPendentes.length} pendente(s)
                   </span>
                 </div>
 
-                {listaOcorrencias.length === 0 ? (
+                {ocorrenciasPendentes.length === 0 ? (
                   <div className="rounded-2xl bg-slate-50 p-5 text-center text-sm text-slate-500">
-                    Nenhuma ocorrencia registrada.
+                    Nenhuma ocorrencia aguardando avaliacao.
                   </div>
                 ) : (
                   <div className="space-y-2">
-                    {listaOcorrencias.map((ocorrencia) => (
+                    {ocorrenciasPendentes.map((ocorrencia) => (
                       <div
                         key={ocorrencia.id}
                         className="rounded-2xl border border-slate-200 bg-white p-3 shadow-sm"
@@ -563,6 +578,63 @@ export default function PainelTecnicoIndividualPage() {
                     ))}
                   </div>
                 )}
+
+                <div className="mt-4 border-t border-slate-100 pt-3">
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setMostrarHistoricoOcorrencias((atual) => !atual)
+                    }
+                    className="flex w-full items-center justify-between rounded-xl border border-slate-200 bg-white px-3 py-2 text-left text-xs font-bold text-slate-700 transition hover:bg-slate-50"
+                  >
+                    <span>
+                      Historico de ocorrencias ({ocorrenciasHistorico.length})
+                    </span>
+                    <ChevronDown
+                      size={16}
+                      className={`transition ${
+                        mostrarHistoricoOcorrencias ? "rotate-180" : ""
+                      }`}
+                      aria-hidden="true"
+                    />
+                  </button>
+
+                  {mostrarHistoricoOcorrencias && (
+                    <div className="mt-3 space-y-2">
+                      {ocorrenciasHistorico.length === 0 ? (
+                        <div className="rounded-2xl bg-slate-50 p-4 text-center text-sm text-slate-500">
+                          Nenhum historico de ocorrencia ainda.
+                        </div>
+                      ) : (
+                        ocorrenciasHistorico.map((ocorrencia) => (
+                          <div
+                            key={ocorrencia.id}
+                            className="rounded-2xl border border-slate-200 bg-white p-3 shadow-sm"
+                          >
+                            <div className="mb-1 flex items-center justify-between gap-2">
+                              <span className="text-xs font-bold text-slate-700">
+                                Ocorrencia #{ocorrencia.numero_ocorrencia}
+                              </span>
+                              <span className="rounded bg-slate-100 px-2 py-0.5 text-[10px] font-bold uppercase text-slate-600">
+                                {statusOcorrenciaLabels[ocorrencia.status] ||
+                                  ocorrencia.status}
+                              </span>
+                            </div>
+                            <p className="text-xs font-bold uppercase text-slate-400">
+                              {ocorrencia.tipo}
+                            </p>
+                            <p className="text-sm font-bold text-slate-800">
+                              {ocorrencia.local}
+                            </p>
+                            <p className="text-xs text-slate-500">
+                              {ocorrencia.descricao}
+                            </p>
+                          </div>
+                        ))
+                      )}
+                    </div>
+                  )}
+                </div>
               </div>
             </div>
           ) : (

@@ -223,6 +223,9 @@ export default function DashboardPage() {
   const [avaliandoOcorrenciaId, setAvaliandoOcorrenciaId] = useState<string | null>(null);
   const [tecnicosPorOcorrencia, setTecnicosPorOcorrencia] = useState<Record<string, string>>({});
   const [enviandoWhatsAppId, setEnviandoWhatsAppId] = useState<string | null>(null);
+  const [mostrarOcorrenciasPendentes, setMostrarOcorrenciasPendentes] =
+    useState(false);
+  const [mostrarOrdensValidacao, setMostrarOrdensValidacao] = useState(false);
   const [ordemEmEdicao, setOrdemEmEdicao] = useState<EdicaoOS | null>(null);
   const [salvandoEdicao, setSalvandoEdicao] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
@@ -800,88 +803,101 @@ export default function DashboardPage() {
                 Registros enviados por colaboradores antes de virar OS.
               </p>
             </div>
-            <span className="rounded-full bg-emerald-50 px-3 py-1 text-sm font-bold text-emerald-700">
-              {ocorrenciasPendentes.length} pendente(s)
-            </span>
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="rounded-full bg-emerald-50 px-3 py-1 text-sm font-bold text-emerald-700">
+                {ocorrenciasPendentes.length} pendente(s)
+              </span>
+              <button
+                type="button"
+                onClick={() =>
+                  setMostrarOcorrenciasPendentes((atual) => !atual)
+                }
+                className="rounded-md border border-slate-300 px-3 py-1.5 text-xs font-bold text-slate-700 transition hover:bg-slate-50"
+              >
+                {mostrarOcorrenciasPendentes ? "Ocultar" : "Ver detalhes"}
+              </button>
+            </div>
           </div>
 
-          <div className="mt-4 space-y-3">
-            {ocorrenciasPendentes.length === 0 ? (
-              <div className="rounded-lg bg-slate-50 p-4 text-sm text-slate-500">
-                Nenhuma ocorrencia aguardando avaliacao.
-              </div>
-            ) : (
-              ocorrenciasPendentes.map((ocorrencia) => (
-                <div
-                  key={ocorrencia.id}
-                  className="grid gap-3 rounded-lg border border-slate-200 p-4 lg:grid-cols-[1fr_220px_220px]"
-                >
-                  <div>
-                    <div className="mb-1 flex flex-wrap items-center gap-2">
-                      <span className="font-mono text-sm font-bold text-slate-900">
-                        Ocorrencia #{ocorrencia.numero_ocorrencia}
-                      </span>
-                      <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs font-bold uppercase text-slate-600">
-                        {ocorrencia.tipo}
-                      </span>
-                      <span className="text-xs text-slate-400">
-                        {formatDate(ocorrencia.criado_em)}
-                      </span>
-                    </div>
-                    <p className="font-semibold text-slate-800">
-                      {ocorrencia.local}
-                    </p>
-                    <p className="mt-1 text-sm text-slate-600">
-                      {ocorrencia.descricao}
-                    </p>
-                    <p className="mt-2 text-xs text-slate-500">
-                      Registrado por:{" "}
-                      {nomesColaboradores[
-                        ocorrencia.registrado_por_colaborador_id
-                      ] || "Colaborador nao encontrado"}
-                    </p>
-                  </div>
-
-                  <select
-                    value={tecnicosPorOcorrencia[ocorrencia.id] ?? ""}
-                    onChange={(event) =>
-                      setTecnicosPorOcorrencia((atuais) => ({
-                        ...atuais,
-                        [ocorrencia.id]: event.target.value,
-                      }))
-                    }
-                    className="h-10 rounded-md border border-slate-300 bg-white px-3 text-sm font-semibold text-slate-700 outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
-                  >
-                    <option value="">Escolher tecnico</option>
-                    {tecnicosAtivos.map((tecnico) => (
-                      <option key={tecnico.id} value={tecnico.id}>
-                        {tecnico.nome}
-                      </option>
-                    ))}
-                  </select>
-
-                  <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-1">
-                    <button
-                      type="button"
-                      onClick={() => transformarOcorrenciaEmOS(ocorrencia)}
-                      disabled={avaliandoOcorrenciaId === ocorrencia.id}
-                      className="h-10 rounded-md bg-emerald-600 px-3 text-sm font-bold text-white transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-60"
-                    >
-                      Virar OS
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => registrarCienciaOcorrencia(ocorrencia)}
-                      disabled={avaliandoOcorrenciaId === ocorrencia.id}
-                      className="h-10 rounded-md border border-slate-300 px-3 text-sm font-bold text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
-                    >
-                      Registrar ciencia
-                    </button>
-                  </div>
+          {mostrarOcorrenciasPendentes && (
+            <div className="mt-4 space-y-3">
+              {ocorrenciasPendentes.length === 0 ? (
+                <div className="rounded-lg bg-slate-50 p-4 text-sm text-slate-500">
+                  Nenhuma ocorrencia aguardando avaliacao.
                 </div>
-              ))
-            )}
-          </div>
+              ) : (
+                ocorrenciasPendentes.map((ocorrencia) => (
+                  <div
+                    key={ocorrencia.id}
+                    className="grid gap-3 rounded-lg border border-slate-200 p-4 lg:grid-cols-[1fr_220px_220px]"
+                  >
+                    <div>
+                      <div className="mb-1 flex flex-wrap items-center gap-2">
+                        <span className="font-mono text-sm font-bold text-slate-900">
+                          Ocorrencia #{ocorrencia.numero_ocorrencia}
+                        </span>
+                        <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs font-bold uppercase text-slate-600">
+                          {ocorrencia.tipo}
+                        </span>
+                        <span className="text-xs text-slate-400">
+                          {formatDate(ocorrencia.criado_em)}
+                        </span>
+                      </div>
+                      <p className="font-semibold text-slate-800">
+                        {ocorrencia.local}
+                      </p>
+                      <p className="mt-1 text-sm text-slate-600">
+                        {ocorrencia.descricao}
+                      </p>
+                      <p className="mt-2 text-xs text-slate-500">
+                        Registrado por:{" "}
+                        {nomesColaboradores[
+                          ocorrencia.registrado_por_colaborador_id
+                        ] || "Colaborador nao encontrado"}
+                      </p>
+                    </div>
+
+                    <select
+                      value={tecnicosPorOcorrencia[ocorrencia.id] ?? ""}
+                      onChange={(event) =>
+                        setTecnicosPorOcorrencia((atuais) => ({
+                          ...atuais,
+                          [ocorrencia.id]: event.target.value,
+                        }))
+                      }
+                      className="h-10 rounded-md border border-slate-300 bg-white px-3 text-sm font-semibold text-slate-700 outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                    >
+                      <option value="">Escolher tecnico</option>
+                      {tecnicosAtivos.map((tecnico) => (
+                        <option key={tecnico.id} value={tecnico.id}>
+                          {tecnico.nome}
+                        </option>
+                      ))}
+                    </select>
+
+                    <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-1">
+                      <button
+                        type="button"
+                        onClick={() => transformarOcorrenciaEmOS(ocorrencia)}
+                        disabled={avaliandoOcorrenciaId === ocorrencia.id}
+                        className="h-10 rounded-md bg-emerald-600 px-3 text-sm font-bold text-white transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-60"
+                      >
+                        Virar OS
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => registrarCienciaOcorrencia(ocorrencia)}
+                        disabled={avaliandoOcorrenciaId === ocorrencia.id}
+                        className="h-10 rounded-md border border-slate-300 px-3 text-sm font-bold text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
+                      >
+                        Registrar ciencia
+                      </button>
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+          )}
         </section>
 
         <section className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
@@ -898,18 +914,28 @@ export default function DashboardPage() {
                 execucao.
               </p>
             </div>
-            <span className="rounded-full bg-violet-50 px-3 py-1 text-sm font-bold text-violet-700">
-              {ordensAguardandoValidacao.length} pendente(s)
-            </span>
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="rounded-full bg-violet-50 px-3 py-1 text-sm font-bold text-violet-700">
+                {ordensAguardandoValidacao.length} pendente(s)
+              </span>
+              <button
+                type="button"
+                onClick={() => setMostrarOrdensValidacao((atual) => !atual)}
+                className="rounded-md border border-slate-300 px-3 py-1.5 text-xs font-bold text-slate-700 transition hover:bg-slate-50"
+              >
+                {mostrarOrdensValidacao ? "Ocultar" : "Ver detalhes"}
+              </button>
+            </div>
           </div>
 
-          <div className="mt-4 space-y-3">
-            {ordensAguardandoValidacao.length === 0 ? (
-              <div className="rounded-lg bg-slate-50 p-4 text-sm text-slate-500">
-                Nenhuma OS aguardando validacao.
-              </div>
-            ) : (
-              ordensAguardandoValidacao.map((ordem) => (
+          {mostrarOrdensValidacao && (
+            <div className="mt-4 space-y-3">
+              {ordensAguardandoValidacao.length === 0 ? (
+                <div className="rounded-lg bg-slate-50 p-4 text-sm text-slate-500">
+                  Nenhuma OS aguardando validacao.
+                </div>
+              ) : (
+                ordensAguardandoValidacao.map((ordem) => (
                 <div
                   key={ordem.id}
                   className="grid gap-3 rounded-lg border border-slate-200 p-4 lg:grid-cols-[1fr_180px]"
@@ -967,9 +993,10 @@ export default function DashboardPage() {
                     Virar OS
                   </button>
                 </div>
-              ))
-            )}
-          </div>
+                ))
+              )}
+            </div>
+          )}
         </section>
 
         <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
