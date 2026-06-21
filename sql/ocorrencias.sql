@@ -1,3 +1,5 @@
+create extension if not exists pgcrypto;
+
 create table if not exists public.ocorrencias (
   id uuid primary key default gen_random_uuid(),
   numero_ocorrencia integer not null,
@@ -191,6 +193,8 @@ end;
 $$;
 
 grant execute on function public.arquivar_ocorrencia(uuid, uuid, text) to anon;
+
+drop function if exists public.cadastrar_colaborador(text, text, text, text);
 
 create or replace function public.cadastrar_colaborador(
   nome_input text,

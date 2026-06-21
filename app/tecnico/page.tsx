@@ -30,7 +30,25 @@ const statusOcorrenciaLabels: Record<string, string> = {
 };
 
 function getErrorMessage(error: unknown) {
+  if (
+    typeof error === "object" &&
+    error !== null &&
+    "message" in error &&
+    typeof error.message === "string"
+  ) {
+    return error.message;
+  }
+
   return error instanceof Error ? error.message : "Falha ao conectar ao banco.";
+}
+
+function isTabelaAusenteError(error: unknown) {
+  return (
+    typeof error === "object" &&
+    error !== null &&
+    "code" in error &&
+    (error.code === "42P01" || error.code === "PGRST205")
+  );
 }
 
 function getSessaoInicial() {
@@ -104,7 +122,7 @@ async function listarOcorrenciasDoColaborador(colaboradorId: string) {
     .order("numero_ocorrencia", { ascending: false });
 
   if (error) {
-    if (error.code === "42P01") return [];
+    if (isTabelaAusenteError(error)) return [];
     throw error;
   }
 

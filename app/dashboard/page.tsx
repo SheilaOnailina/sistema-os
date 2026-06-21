@@ -78,7 +78,25 @@ const prioridadeStyles: Record<PrioridadeOS, string> = {
 };
 
 function getErrorMessage(error: unknown) {
+  if (
+    typeof error === "object" &&
+    error !== null &&
+    "message" in error &&
+    typeof error.message === "string"
+  ) {
+    return error.message;
+  }
+
   return error instanceof Error ? error.message : "Falha ao buscar os dados.";
+}
+
+function isTabelaAusenteError(error: unknown) {
+  return (
+    typeof error === "object" &&
+    error !== null &&
+    "code" in error &&
+    (error.code === "42P01" || error.code === "PGRST205")
+  );
 }
 
 async function listarOrdens() {
@@ -112,7 +130,7 @@ async function listarOcorrencias() {
     .order("numero_ocorrencia", { ascending: false });
 
   if (error) {
-    if (error.code === "42P01") return [];
+    if (isTabelaAusenteError(error)) return [];
     throw error;
   }
 
