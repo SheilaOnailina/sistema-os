@@ -101,6 +101,16 @@ function ordenarOrdens(a: OrdemServico, b: OrdemServico) {
   return Number(b.numero_os) - Number(a.numero_os);
 }
 
+function inicioDaSemanaAtualIso() {
+  const hoje = new Date();
+  const diaDaSemana = hoje.getDay();
+  const diasDesdeSegunda = diaDaSemana === 0 ? 6 : diaDaSemana - 1;
+  const inicio = new Date(hoje);
+  inicio.setDate(hoje.getDate() - diasDesdeSegunda);
+  inicio.setHours(0, 0, 0, 0);
+  return inicio.toISOString();
+}
+
 async function listarOrdensDoTecnico(colaboradorId: string) {
   const supabase = getSupabase();
   const { data, error } = await supabase
@@ -121,6 +131,9 @@ async function listarOcorrenciasDoColaborador(colaboradorId: string) {
     .from("ocorrencias")
     .select("*")
     .eq("registrado_por_colaborador_id", colaboradorId)
+    .or(
+      `status.eq.AGUARDANDO_AVALIACAO,criado_em.gte.${inicioDaSemanaAtualIso()}`,
+    )
     .order("numero_ocorrencia", { ascending: false });
 
   if (error) {
@@ -588,7 +601,7 @@ export default function PainelTecnicoIndividualPage() {
                     className="flex w-full items-center justify-between rounded-xl border border-slate-200 bg-white px-3 py-2 text-left text-xs font-bold text-slate-700 transition hover:bg-slate-50"
                   >
                     <span>
-                      Historico de ocorrencias ({ocorrenciasHistorico.length})
+                      Historico da semana ({ocorrenciasHistorico.length})
                     </span>
                     <ChevronDown
                       size={16}
@@ -603,7 +616,7 @@ export default function PainelTecnicoIndividualPage() {
                     <div className="mt-3 space-y-2">
                       {ocorrenciasHistorico.length === 0 ? (
                         <div className="rounded-2xl bg-slate-50 p-4 text-center text-sm text-slate-500">
-                          Nenhum historico de ocorrencia ainda.
+                          Nenhum historico desta semana.
                         </div>
                       ) : (
                         ocorrenciasHistorico.map((ocorrencia) => (
