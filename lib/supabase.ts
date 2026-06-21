@@ -1,6 +1,10 @@
 import { createClient } from "@supabase/supabase-js";
 
-export type PerfilColaborador = "GESTOR" | "TECNICO" | "SOLICITANTE";
+export type PerfilColaborador =
+  | "GESTOR"
+  | "ENCARREGADO"
+  | "TECNICO"
+  | "SOLICITANTE";
 export type PrioridadeOS = "BAIXA" | "NORMAL" | "ALTA" | "URGENTE";
 export type StatusOcorrencia =
   | "AGUARDANDO_AVALIACAO"
@@ -23,6 +27,9 @@ export type Colaborador = {
   perfil: PerfilColaborador;
   ativo: boolean;
   precisa_trocar_senha: boolean;
+  permissao_modulo_manutencao?: boolean;
+  permissao_modulo_estoque?: boolean;
+  permissao_modulo_ar_condicionado?: boolean;
   criado_em?: string;
 };
 
@@ -86,6 +93,27 @@ export type MovimentacaoEstoque = {
   criado_em?: string | null;
 };
 
+export type UnidadeMedida = {
+  id: string;
+  nome: string;
+  ativo: boolean;
+  criado_em?: string | null;
+};
+
+export type SolicitacaoMaterial = {
+  id: string;
+  material_id: string;
+  colaborador_id: string;
+  quantidade: number;
+  motivo: string;
+  status: "PENDENTE" | "AUTORIZADA" | "RECUSADA" | string;
+  observacao_resposta?: string | null;
+  respondido_por_colaborador_id?: string | null;
+  movimentacao_id?: string | null;
+  criado_em?: string | null;
+  respondido_em?: string | null;
+};
+
 type Database = {
   public: {
     Tables: {
@@ -118,6 +146,22 @@ type Database = {
         Insert: Partial<MovimentacaoEstoque> &
           Pick<MovimentacaoEstoque, "material_id" | "tipo" | "quantidade">;
         Update: Partial<MovimentacaoEstoque>;
+        Relationships: [];
+      };
+      unidades_medida: {
+        Row: UnidadeMedida;
+        Insert: Partial<UnidadeMedida> & Pick<UnidadeMedida, "nome">;
+        Update: Partial<UnidadeMedida>;
+        Relationships: [];
+      };
+      solicitacoes_materiais: {
+        Row: SolicitacaoMaterial;
+        Insert: Partial<SolicitacaoMaterial> &
+          Pick<
+            SolicitacaoMaterial,
+            "material_id" | "colaborador_id" | "quantidade" | "motivo"
+          >;
+        Update: Partial<SolicitacaoMaterial>;
         Relationships: [];
       };
     };
@@ -230,6 +274,35 @@ type Database = {
           registrado_por_colaborador_id_input?: string | null;
         };
         Returns: MovimentacaoEstoque;
+      };
+      atualizar_material_estoque: {
+        Args: {
+          material_id_input: string;
+          nome_input: string;
+          unidade_input: string;
+          estoque_minimo_input: number;
+          periodicidade_input: PeriodicidadeEstoque | string;
+          ultimo_recebimento_input?: string | null;
+        };
+        Returns: MaterialEstoque;
+      };
+      solicitar_material_estoque: {
+        Args: {
+          material_id_input: string;
+          colaborador_id_input: string;
+          quantidade_input: number;
+          motivo_input: string;
+        };
+        Returns: SolicitacaoMaterial;
+      };
+      responder_solicitacao_material: {
+        Args: {
+          solicitacao_id_input: string;
+          autorizador_id_input: string;
+          autorizar_input: boolean;
+          observacao_input?: string | null;
+        };
+        Returns: SolicitacaoMaterial;
       };
     };
     Enums: Record<string, never>;

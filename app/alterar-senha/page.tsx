@@ -75,7 +75,12 @@ export default function AlterarSenhaPage() {
       };
 
       localStorage.setItem(sessionKey, JSON.stringify(usuarioAtualizado));
-      router.push(usuarioAtualizado.perfil === "GESTOR" ? "/dashboard" : "/tecnico");
+      router.push(
+        usuarioAtualizado.perfil === "GESTOR" ||
+          usuarioAtualizado.perfil === "ENCARREGADO"
+          ? "/dashboard"
+          : "/tecnico",
+      );
     } catch (error) {
       console.error("Erro ao alterar senha:", error);
       setErro(getErrorMessage(error));
@@ -138,7 +143,11 @@ export default function AlterarSenhaPage() {
 
         <div className="mt-4 text-center text-sm">
           <Link
-            href={usuario?.perfil === "GESTOR" ? "/dashboard" : "/tecnico"}
+            href={
+              usuario?.perfil === "GESTOR" || usuario?.perfil === "ENCARREGADO"
+                ? "/dashboard"
+                : "/tecnico"
+            }
             className="font-semibold text-blue-700 hover:underline"
           >
             Voltar para o painel

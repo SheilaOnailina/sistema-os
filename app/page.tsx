@@ -31,7 +31,11 @@ export default function Home() {
       return;
     }
 
-    router.replace(usuario.perfil === "GESTOR" ? "/dashboard" : "/tecnico");
+    router.replace(
+      usuario.perfil === "GESTOR" || usuario.perfil === "ENCARREGADO"
+        ? "/dashboard"
+        : "/tecnico",
+    );
   }, [router]);
 
   return (

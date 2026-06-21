@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import {
   AlertCircle,
@@ -24,6 +25,9 @@ type FormState = {
   cpf: string;
   telefone: string;
   perfil: PerfilColaborador;
+  permissao_modulo_manutencao: boolean;
+  permissao_modulo_estoque: boolean;
+  permissao_modulo_ar_condicionado: boolean;
 };
 
 const initialForm: FormState = {
@@ -31,7 +35,19 @@ const initialForm: FormState = {
   cpf: "",
   telefone: "",
   perfil: "TECNICO",
+  permissao_modulo_manutencao: true,
+  permissao_modulo_estoque: false,
+  permissao_modulo_ar_condicionado: false,
 };
+
+const sessionKey = "sistema-os-colaborador";
+
+function getSessaoInicial() {
+  if (typeof window === "undefined") return null;
+
+  const sessao = localStorage.getItem(sessionKey);
+  return sessao ? (JSON.parse(sessao) as Colaborador) : null;
+}
 
 function onlyNumbers(value: string) {
   return value.replace(/\D/g, "");
@@ -57,7 +73,9 @@ async function listarColaboradores() {
   const supabase = getSupabase();
   const { data, error } = await supabase
     .from("colaboradores")
-    .select("id,nome,cpf,telefone,perfil,ativo,precisa_trocar_senha,criado_em")
+    .select(
+      "id,nome,cpf,telefone,perfil,ativo,precisa_trocar_senha,permissao_modulo_manutencao,permissao_modulo_estoque,permissao_modulo_ar_condicionado,criado_em",
+    )
     .order("nome", { ascending: true });
 
   if (error) throw error;
@@ -66,6 +84,8 @@ async function listarColaboradores() {
 }
 
 export default function ColaboradoresPage() {
+  const router = useRouter();
+  const [usuario] = useState<Colaborador | null>(getSessaoInicial);
   const [colaboradores, setColaboradores] = useState<Colaborador[]>([]);
   const [form, setForm] = useState<FormState>(initialForm);
   const [colaboradorEmEdicao, setColaboradorEmEdicao] =
@@ -95,6 +115,16 @@ export default function ColaboradoresPage() {
   }
 
   useEffect(() => {
+    if (!usuario) {
+      router.replace("/login");
+      return;
+    }
+
+    if (usuario.perfil !== "GESTOR") {
+      router.replace("/dashboard");
+      return;
+    }
+
     let montado = true;
 
     listarColaboradores()
@@ -115,7 +145,7 @@ export default function ColaboradoresPage() {
     return () => {
       montado = false;
     };
-  }, []);
+  }, [router, usuario]);
 
   const indicadores = useMemo(() => {
     const ativos = colaboradores.filter((colaborador) => colaborador.ativo).length;
@@ -124,6 +154,9 @@ export default function ColaboradoresPage() {
     ).length;
     const gestores = colaboradores.filter(
       (colaborador) => colaborador.perfil === "GESTOR",
+    ).length;
+    const encarregados = colaboradores.filter(
+      (colaborador) => colaborador.perfil === "ENCARREGADO",
     ).length;
     const solicitantes = colaboradores.filter(
       (colaborador) => colaborador.perfil === "SOLICITANTE",
@@ -134,6 +167,7 @@ export default function ColaboradoresPage() {
       ativos,
       tecnicos,
       gestores,
+      encarregados,
       solicitantes,
     };
   }, [colaboradores]);
@@ -178,7 +212,7 @@ export default function ColaboradoresPage() {
     try {
       setSalvando(true);
       const supabase = getSupabase();
-      const { error } = await supabase.rpc("cadastrar_colaborador", {
+      const { data, error } = await supabase.rpc("cadastrar_colaborador", {
         nome_input: form.nome.trim(),
         cpf_input: cpfLimpo,
         telefone_input: telefoneLimpo || null,
@@ -186,6 +220,21 @@ export default function ColaboradoresPage() {
       });
 
       if (error) throw error;
+
+      const colaboradorCriado = data?.[0] as Colaborador | undefined;
+      if (colaboradorCriado) {
+        await supabase
+          .from("colaboradores")
+          .update({
+            permissao_modulo_manutencao:
+              form.perfil === "GESTOR" || form.permissao_modulo_manutencao,
+            permissao_modulo_estoque:
+              form.perfil === "GESTOR" || form.permissao_modulo_estoque,
+            permissao_modulo_ar_condicionado:
+              form.perfil === "GESTOR" || form.permissao_modulo_ar_condicionado,
+          })
+          .eq("id", colaboradorCriado.id);
+      }
 
       setForm(initialForm);
       setSucesso("Colaborador cadastrado. A senha inicial e o CPF.");
@@ -230,6 +279,13 @@ export default function ColaboradoresPage() {
       cpf: colaborador.cpf,
       telefone: colaborador.telefone ?? "",
       perfil: colaborador.perfil,
+      permissao_modulo_manutencao:
+        colaborador.permissao_modulo_manutencao ?? true,
+      permissao_modulo_estoque:
+        colaborador.permissao_modulo_estoque ?? colaborador.perfil === "GESTOR",
+      permissao_modulo_ar_condicionado:
+        colaborador.permissao_modulo_ar_condicionado ??
+        colaborador.perfil === "GESTOR",
     });
     setErro(null);
     setSucesso(null);
@@ -264,6 +320,15 @@ export default function ColaboradoresPage() {
           cpf: cpfLimpo,
           telefone: telefoneLimpo || null,
           perfil: formEdicao.perfil,
+          permissao_modulo_manutencao:
+            formEdicao.perfil === "GESTOR" ||
+            formEdicao.permissao_modulo_manutencao,
+          permissao_modulo_estoque:
+            formEdicao.perfil === "GESTOR" ||
+            formEdicao.permissao_modulo_estoque,
+          permissao_modulo_ar_condicionado:
+            formEdicao.perfil === "GESTOR" ||
+            formEdicao.permissao_modulo_ar_condicionado,
         })
         .eq("id", colaboradorEmEdicao.id);
 
@@ -390,11 +455,16 @@ export default function ColaboradoresPage() {
           </div>
         )}
 
-        <section className="grid gap-4 md:grid-cols-5">
+        <section className="grid gap-4 md:grid-cols-6">
           <Indicador titulo="Total" valor={indicadores.total} detalhe="Cadastrados" />
           <Indicador titulo="Ativos" valor={indicadores.ativos} detalhe="Podem acessar" />
           <Indicador titulo="Tecnicos" valor={indicadores.tecnicos} detalhe="Perfil tecnico" />
           <Indicador titulo="Gestores" valor={indicadores.gestores} detalhe="Perfil gestor" />
+          <Indicador
+            titulo="Encarregados"
+            valor={indicadores.encarregados}
+            detalhe="Acesso intermediario"
+          />
           <Indicador
             titulo="Solicitantes"
             valor={indicadores.solicitantes}
@@ -461,9 +531,17 @@ export default function ColaboradoresPage() {
                 >
                   <option value="TECNICO">Tecnico</option>
                   <option value="SOLICITANTE">Solicitante</option>
+                  <option value="ENCARREGADO">Encarregado</option>
                   <option value="GESTOR">Gestor</option>
                 </select>
               </label>
+
+              <PermissoesAcesso
+                form={form}
+                onChange={(patch) =>
+                  setForm((atual) => ({ ...atual, ...patch }))
+                }
+              />
 
               <button
                 type="submit"
@@ -680,9 +758,17 @@ export default function ColaboradoresPage() {
                 >
                   <option value="TECNICO">Tecnico</option>
                   <option value="SOLICITANTE">Solicitante</option>
+                  <option value="ENCARREGADO">Encarregado</option>
                   <option value="GESTOR">Gestor</option>
                 </select>
               </label>
+
+              <PermissoesAcesso
+                form={formEdicao}
+                onChange={(patch) =>
+                  setFormEdicao((atual) => ({ ...atual, ...patch }))
+                }
+              />
             </div>
 
             <div className="flex flex-col-reverse gap-2 border-t border-slate-200 p-5 sm:flex-row sm:justify-end">
@@ -735,6 +821,79 @@ function Campo({
         inputMode={inputMode}
         className="h-11 w-full rounded-md border border-slate-300 px-3 text-sm outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
       />
+    </label>
+  );
+}
+
+function PermissoesAcesso({
+  form,
+  onChange,
+}: {
+  form: FormState;
+  onChange: (patch: Partial<FormState>) => void;
+}) {
+  const gestor = form.perfil === "GESTOR";
+
+  return (
+    <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+      <p className="text-sm font-bold text-slate-800">Permissoes de acesso</p>
+      <p className="mt-1 text-xs text-slate-500">
+        Marque quais modulos aparecem no painel inicial do colaborador.
+      </p>
+      <div className="mt-3 space-y-2">
+        <CheckPermissao
+          label="Modulo de manutencao"
+          checked={gestor || form.permissao_modulo_manutencao}
+          disabled={gestor}
+          onChange={(checked) =>
+            onChange({ permissao_modulo_manutencao: checked })
+          }
+        />
+        <CheckPermissao
+          label="Modulo de estoque"
+          checked={gestor || form.permissao_modulo_estoque}
+          disabled={gestor}
+          onChange={(checked) => onChange({ permissao_modulo_estoque: checked })}
+        />
+        <CheckPermissao
+          label="Modulo de manutencao de ar-condicionado"
+          checked={gestor || form.permissao_modulo_ar_condicionado}
+          disabled={gestor}
+          onChange={(checked) =>
+            onChange({ permissao_modulo_ar_condicionado: checked })
+          }
+        />
+      </div>
+      {gestor && (
+        <p className="mt-2 text-xs font-semibold text-blue-700">
+          Gestor tem acesso total automaticamente.
+        </p>
+      )}
+    </div>
+  );
+}
+
+function CheckPermissao({
+  label,
+  checked,
+  disabled,
+  onChange,
+}: {
+  label: string;
+  checked: boolean;
+  disabled?: boolean;
+  onChange: (checked: boolean) => void;
+}) {
+  return (
+    <label className="flex items-center gap-2 rounded-md bg-white px-3 py-2 text-sm font-semibold text-slate-700">
+      <input
+        type="checkbox"
+        checked={checked}
+        disabled={disabled}
+        onChange={(event) => onChange(event.target.checked)}
+        className="h-4 w-4 rounded border-slate-300"
+      />
+      {label}
     </label>
   );
 }

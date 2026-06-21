@@ -22,6 +22,7 @@ import {
   type Ocorrencia,
   type OrdemServico,
   type PrioridadeOS,
+  type SolicitacaoMaterial,
 } from "@/lib/supabase";
 
 const sessionKey = "sistema-os-colaborador";
@@ -162,6 +163,23 @@ async function listarMateriaisEstoque() {
   return (data ?? []) as MaterialEstoque[];
 }
 
+async function listarSolicitacoesSemana(colaboradorId: string) {
+  const supabase = getSupabase();
+  const { data, error } = await supabase
+    .from("solicitacoes_materiais")
+    .select("*")
+    .eq("colaborador_id", colaboradorId)
+    .gte("criado_em", inicioDaSemanaAtualIso())
+    .order("criado_em", { ascending: false });
+
+  if (error) {
+    if (isTabelaAusenteError(error)) return [];
+    throw error;
+  }
+
+  return (data ?? []) as SolicitacaoMaterial[];
+}
+
 export default function PainelTecnicoIndividualPage() {
   const router = useRouter();
   const [usuario] = useState<Colaborador | null>(getSessaoInicial);
@@ -170,6 +188,9 @@ export default function PainelTecnicoIndividualPage() {
   const [materiaisEstoque, setMateriaisEstoque] = useState<MaterialEstoque[]>(
     [],
   );
+  const [solicitacoesSemana, setSolicitacoesSemana] = useState<
+    SolicitacaoMaterial[]
+  >([]);
   const [osSelecionada, setOsSelecionada] = useState<OrdemServico | null>(null);
   const [insumos, setInsumos] = useState("");
   const [resultadoServico, setResultadoServico] = useState<ResultadoServico>("");
@@ -205,7 +226,7 @@ export default function PainelTecnicoIndividualPage() {
       return;
     }
 
-    if (usuario.perfil === "GESTOR") {
+    if (usuario.perfil === "GESTOR" || usuario.perfil === "ENCARREGADO") {
       router.replace("/dashboard");
     }
   }, [router, usuario]);
@@ -215,16 +236,18 @@ export default function PainelTecnicoIndividualPage() {
 
     try {
       setAtualizando(true);
-      const [ordens, ocorrencias, materiais] = await Promise.all([
+      const [ordens, ocorrencias, materiais, solicitacoes] = await Promise.all([
         usuario.perfil === "TECNICO"
           ? listarOrdensDoTecnico(usuario.id)
           : Promise.resolve([]),
         listarOcorrenciasDoColaborador(usuario.id),
         listarMateriaisEstoque(),
+        listarSolicitacoesSemana(usuario.id),
       ]);
       setListaOS(ordens);
       setListaOcorrencias(ocorrencias);
       setMateriaisEstoque(materiais);
+      setSolicitacoesSemana(solicitacoes);
       setErro(null);
     } catch (error) {
       console.error("Erro detalhado do Supabase:", error);
@@ -236,7 +259,13 @@ export default function PainelTecnicoIndividualPage() {
   }
 
   useEffect(() => {
-    if (!usuario || usuario.perfil === "GESTOR") return;
+    if (
+      !usuario ||
+      usuario.perfil === "GESTOR" ||
+      usuario.perfil === "ENCARREGADO"
+    ) {
+      return;
+    }
 
     let montado = true;
 
@@ -246,12 +275,14 @@ export default function PainelTecnicoIndividualPage() {
         : Promise.resolve([]),
       listarOcorrenciasDoColaborador(usuario.id),
       listarMateriaisEstoque(),
+      listarSolicitacoesSemana(usuario.id),
     ])
-      .then(([ordens, ocorrencias, materiais]) => {
+      .then(([ordens, ocorrencias, materiais, solicitacoes]) => {
         if (!montado) return;
         setListaOS(ordens);
         setListaOcorrencias(ocorrencias);
         setMateriaisEstoque(materiais);
+        setSolicitacoesSemana(solicitacoes);
         setErro(null);
       })
       .catch((error: unknown) => {
@@ -289,6 +320,24 @@ export default function PainelTecnicoIndividualPage() {
       (ocorrencia) => ocorrencia.status !== "AGUARDANDO_AVALIACAO",
     );
   }, [listaOcorrencias]);
+
+  const materiaisPorId = useMemo(() => {
+    return materiaisEstoque.reduce<Record<string, MaterialEstoque>>(
+      (mapa, material) => {
+        mapa[material.id] = material;
+        return mapa;
+      },
+      {},
+    );
+  }, [materiaisEstoque]);
+
+  const podeModuloManutencao =
+    usuario?.perfil === "TECNICO" &&
+    (usuario.permissao_modulo_manutencao ?? true);
+  const podeModuloEstoque = Boolean(usuario?.permissao_modulo_estoque);
+  const podeModuloArCondicionado = Boolean(
+    usuario?.permissao_modulo_ar_condicionado,
+  );
 
   async function iniciarDemanda(id: string) {
     const supabase = getSupabase();
@@ -436,20 +485,16 @@ export default function PainelTecnicoIndividualPage() {
     try {
       setSalvandoRetirada(true);
       const supabase = getSupabase();
-      const { error } = await supabase.rpc("registrar_movimentacao_estoque", {
+      const { error } = await supabase.rpc("solicitar_material_estoque", {
         material_id_input: materialRetiradaId,
-        tipo_input: "SAIDA",
-        quantidade_input: Number(quantidadeRetirada),
         colaborador_id_input: usuario.id,
+        quantidade_input: Number(quantidadeRetirada),
         motivo_input: motivoRetirada,
-        observacao_input: "Retirada registrada pelo colaborador",
-        ordem_servico_id_input: null,
-        registrado_por_colaborador_id_input: usuario.id,
       });
 
       if (error) throw error;
 
-      alert("Retirada de material registrada com sucesso.");
+      alert("Solicitacao de material enviada para autorizacao.");
       limparRetiradaMaterial();
       setRegistrandoRetirada(false);
       setErro(null);
@@ -527,29 +572,45 @@ export default function PainelTecnicoIndividualPage() {
         </header>
 
         <div className="grid gap-2 sm:grid-cols-2">
-          <button
-            type="button"
-            onClick={() => {
-              setRegistrandoSolicitada(true);
-              setErro(null);
-            }}
-            className="inline-flex items-center justify-center gap-2 rounded-2xl bg-emerald-600 px-4 py-3 text-sm font-bold text-white shadow-lg transition hover:bg-emerald-700"
-          >
-            <PlusCircle size={18} aria-hidden="true" />
-            Registrar ocorrencia
-          </button>
-          <button
-            type="button"
-            onClick={() => {
-              setRegistrandoRetirada(true);
-              setErro(null);
-            }}
-            disabled={materiaisEstoque.length === 0}
-            className="inline-flex items-center justify-center gap-2 rounded-2xl bg-slate-900 px-4 py-3 text-sm font-bold text-white shadow-lg transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
-          >
-            <PackageMinus size={18} aria-hidden="true" />
-            Retirar material
-          </button>
+          {podeModuloManutencao && (
+            <button
+              type="button"
+              onClick={() => {
+                setRegistrandoSolicitada(true);
+                setErro(null);
+              }}
+              className="inline-flex items-center justify-center gap-2 rounded-2xl bg-emerald-600 px-4 py-3 text-sm font-bold text-white shadow-lg transition hover:bg-emerald-700"
+            >
+              <PlusCircle size={18} aria-hidden="true" />
+              Registrar ocorrencia
+            </button>
+          )}
+          {podeModuloEstoque && (
+            <button
+              type="button"
+              onClick={() => {
+                setRegistrandoRetirada(true);
+                setErro(null);
+              }}
+              disabled={materiaisEstoque.length === 0}
+              className="inline-flex items-center justify-center gap-2 rounded-2xl bg-slate-900 px-4 py-3 text-sm font-bold text-white shadow-lg transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              <PackageMinus size={18} aria-hidden="true" />
+              Solicitar material
+            </button>
+          )}
+          {podeModuloArCondicionado && (
+            <div className="rounded-2xl border border-blue-200 bg-blue-50 px-4 py-3 text-sm font-bold text-blue-800">
+              Modulo de ar-condicionado em preparacao
+            </div>
+          )}
+          {!podeModuloManutencao &&
+            !podeModuloEstoque &&
+            !podeModuloArCondicionado && (
+              <div className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-500 sm:col-span-2">
+                Nenhum modulo liberado para este usuario.
+              </div>
+            )}
         </div>
 
         <div className="rounded-3xl border border-slate-200 bg-white shadow-xl">
@@ -585,7 +646,7 @@ export default function PainelTecnicoIndividualPage() {
             </p>
           ) : !osSelecionada ? (
             <div className="space-y-3 p-4">
-              {usuario.perfil === "TECNICO" && listaOS.map((os) => (
+              {podeModuloManutencao && listaOS.map((os) => (
                 <button
                   key={os.id}
                   onClick={() => {
@@ -632,7 +693,7 @@ export default function PainelTecnicoIndividualPage() {
                 </button>
               ))}
 
-              {usuario.perfil === "TECNICO" && listaOS.length === 0 && (
+              {podeModuloManutencao && listaOS.length === 0 && (
                 <div className="rounded-2xl bg-slate-50 p-8 text-center">
                   <UserRound
                     size={28}
@@ -642,6 +703,61 @@ export default function PainelTecnicoIndividualPage() {
                   <p className="text-sm text-slate-500">
                     Nenhuma demanda pendente para voce.
                   </p>
+                </div>
+              )}
+
+              {podeModuloEstoque && (
+                <div className="border-t border-slate-100 pt-4">
+                  <div className="mb-3 flex items-center justify-between">
+                    <h2 className="text-sm font-bold text-slate-800">
+                      Materiais solicitados na semana
+                    </h2>
+                    <span className="text-xs font-semibold text-slate-400">
+                      {solicitacoesSemana.length} registro(s)
+                    </span>
+                  </div>
+
+                  {solicitacoesSemana.length === 0 ? (
+                    <div className="rounded-2xl bg-slate-50 p-5 text-center text-sm text-slate-500">
+                      Nenhuma solicitacao de material nesta semana.
+                    </div>
+                  ) : (
+                    <div className="space-y-2">
+                      {solicitacoesSemana.map((solicitacao) => {
+                        const material = materiaisPorId[solicitacao.material_id];
+                        return (
+                          <div
+                            key={solicitacao.id}
+                            className="rounded-2xl border border-slate-200 bg-white p-3 shadow-sm"
+                          >
+                            <div className="mb-1 flex items-center justify-between gap-2">
+                              <span className="text-xs font-bold text-slate-700">
+                                {material?.nome || "Material"}
+                              </span>
+                              <span
+                                className={`rounded px-2 py-0.5 text-[10px] font-bold uppercase ${
+                                  solicitacao.status === "AUTORIZADA"
+                                    ? "bg-emerald-50 text-emerald-700"
+                                    : solicitacao.status === "RECUSADA"
+                                      ? "bg-red-50 text-red-700"
+                                      : "bg-amber-50 text-amber-700"
+                                }`}
+                              >
+                                {solicitacao.status}
+                              </span>
+                            </div>
+                            <p className="text-xs text-slate-500">
+                              Quantidade: {Number(solicitacao.quantidade)}{" "}
+                              {material?.unidade || ""}
+                            </p>
+                            <p className="text-xs text-slate-500">
+                              Motivo: {solicitacao.motivo}
+                            </p>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
                 </div>
               )}
 
@@ -1025,10 +1141,10 @@ export default function PainelTecnicoIndividualPage() {
                   Estoque
                 </p>
                 <h2 className="mt-1 text-xl font-bold text-slate-950">
-                  Retirada de material
+                  Solicitacao de material
                 </h2>
                 <p className="mt-1 text-sm text-slate-500">
-                  Registre uma retirada avulsa que nao depende de OS.
+                  Envie o pedido para autorizacao do gestor ou encarregado.
                 </p>
               </div>
               <button
@@ -1063,7 +1179,7 @@ export default function PainelTecnicoIndividualPage() {
 
               <label className="block">
                 <span className="mb-1 block text-sm font-semibold text-slate-700">
-                  Quantidade *
+                  Quantidade solicitada *
                 </span>
                 <input
                   type="number"
@@ -1076,7 +1192,7 @@ export default function PainelTecnicoIndividualPage() {
 
               <label className="block">
                 <span className="mb-1 block text-sm font-semibold text-slate-700">
-                  Motivo *
+                  Motivo da solicitacao *
                 </span>
                 <textarea
                   value={motivoRetirada}
@@ -1103,7 +1219,7 @@ export default function PainelTecnicoIndividualPage() {
                 disabled={salvandoRetirada}
                 className="rounded-xl bg-slate-900 px-4 py-3 text-sm font-bold text-white transition hover:bg-slate-800 disabled:opacity-60"
               >
-                {salvandoRetirada ? "Salvando..." : "Registrar retirada"}
+                {salvandoRetirada ? "Salvando..." : "Enviar solicitacao"}
               </button>
             </div>
           </div>

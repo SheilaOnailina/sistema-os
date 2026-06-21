@@ -10,9 +10,13 @@ import {
   ArrowUpCircle,
   Boxes,
   CalendarClock,
+  CheckCircle2,
+  Pencil,
   Loader2,
   PlusCircle,
   RefreshCw,
+  Search,
+  XCircle,
 } from "lucide-react";
 import {
   getSupabase,
@@ -20,6 +24,8 @@ import {
   type MaterialEstoque,
   type MovimentacaoEstoque,
   type PeriodicidadeEstoque,
+  type SolicitacaoMaterial,
+  type UnidadeMedida,
 } from "@/lib/supabase";
 
 const sessionKey = "sistema-os-colaborador";
@@ -90,7 +96,13 @@ function numero(value: unknown) {
 
 async function carregarEstoque() {
   const supabase = getSupabase();
-  const [materiaisResult, movimentosResult, colaboradoresResult] =
+  const [
+    materiaisResult,
+    movimentosResult,
+    colaboradoresResult,
+    unidadesResult,
+    solicitacoesResult,
+  ] =
     await Promise.all([
       supabase
         .from("materiais_estoque")
@@ -107,11 +119,27 @@ async function carregarEstoque() {
         .select("*")
         .eq("ativo", true)
         .order("nome", { ascending: true }),
+      supabase
+        .from("unidades_medida")
+        .select("*")
+        .eq("ativo", true)
+        .order("nome", { ascending: true }),
+      supabase
+        .from("solicitacoes_materiais")
+        .select("*")
+        .order("criado_em", { ascending: false })
+        .limit(50),
     ]);
 
   if (materiaisResult.error) {
     if (isTabelaAusenteError(materiaisResult.error)) {
-      return { materiais: [], movimentos: [], colaboradores: [] };
+      return {
+        materiais: [],
+        movimentos: [],
+        colaboradores: [],
+        unidades: [],
+        solicitacoes: [],
+      };
     }
     throw materiaisResult.error;
   }
@@ -121,11 +149,22 @@ async function carregarEstoque() {
   }
 
   if (colaboradoresResult.error) throw colaboradoresResult.error;
+  if (unidadesResult.error && !isTabelaAusenteError(unidadesResult.error)) {
+    throw unidadesResult.error;
+  }
+  if (
+    solicitacoesResult.error &&
+    !isTabelaAusenteError(solicitacoesResult.error)
+  ) {
+    throw solicitacoesResult.error;
+  }
 
   return {
     materiais: (materiaisResult.data ?? []) as MaterialEstoque[],
     movimentos: (movimentosResult.data ?? []) as MovimentacaoEstoque[],
     colaboradores: (colaboradoresResult.data ?? []) as Colaborador[],
+    unidades: (unidadesResult.data ?? []) as UnidadeMedida[],
+    solicitacoes: (solicitacoesResult.data ?? []) as SolicitacaoMaterial[],
   };
 }
 
@@ -135,12 +174,14 @@ export default function EstoquePage() {
   const [materiais, setMateriais] = useState<MaterialEstoque[]>([]);
   const [movimentos, setMovimentos] = useState<MovimentacaoEstoque[]>([]);
   const [colaboradores, setColaboradores] = useState<Colaborador[]>([]);
+  const [unidades, setUnidades] = useState<UnidadeMedida[]>([]);
+  const [solicitacoes, setSolicitacoes] = useState<SolicitacaoMaterial[]>([]);
   const [carregando, setCarregando] = useState(true);
   const [salvando, setSalvando] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
 
   const [nome, setNome] = useState("");
-  const [unidade, setUnidade] = useState("unidade");
+  const [unidade, setUnidade] = useState("Unidade");
   const [estoqueMinimo, setEstoqueMinimo] = useState("0");
   const [periodicidade, setPeriodicidade] =
     useState<PeriodicidadeEstoque>("SEM_PREVISAO");
@@ -154,6 +195,20 @@ export default function EstoquePage() {
   const [quantidadeSaida, setQuantidadeSaida] = useState("");
   const [colaboradorSaidaId, setColaboradorSaidaId] = useState("");
   const [motivoSaida, setMotivoSaida] = useState("");
+  const [buscaMateriais, setBuscaMateriais] = useState("");
+  const [buscaMovimentos, setBuscaMovimentos] = useState("");
+  const [materialEmEdicao, setMaterialEmEdicao] =
+    useState<MaterialEstoque | null>(null);
+  const [editNome, setEditNome] = useState("");
+  const [editUnidade, setEditUnidade] = useState("Unidade");
+  const [editEstoqueMinimo, setEditEstoqueMinimo] = useState("0");
+  const [editPeriodicidade, setEditPeriodicidade] =
+    useState<PeriodicidadeEstoque>("SEM_PREVISAO");
+  const [editUltimoRecebimento, setEditUltimoRecebimento] = useState("");
+
+  const podeConfigurar = usuario?.perfil === "GESTOR";
+  const podeAprovar =
+    usuario?.perfil === "GESTOR" || usuario?.perfil === "ENCARREGADO";
 
   const nomesMateriais = useMemo(() => {
     return materiais.reduce<Record<string, string>>((mapa, material) => {
@@ -179,6 +234,50 @@ export default function EstoquePage() {
     });
   }, [materiais]);
 
+  const materiaisFiltrados = useMemo(() => {
+    const termo = buscaMateriais.trim().toLowerCase();
+    if (!termo) return materiais;
+
+    return materiais.filter((material) =>
+      [
+        material.nome,
+        material.unidade,
+        material.periodicidade,
+        material.ultimo_recebimento,
+        material.proximo_recebimento,
+      ]
+        .join(" ")
+        .toLowerCase()
+        .includes(termo),
+    );
+  }, [buscaMateriais, materiais]);
+
+  const movimentosFiltrados = useMemo(() => {
+    const termo = buscaMovimentos.trim().toLowerCase();
+    if (!termo) return movimentos;
+
+    return movimentos.filter((movimento) =>
+      [
+        nomesMateriais[movimento.material_id],
+        movimento.tipo,
+        movimento.motivo,
+        movimento.observacao,
+        movimento.colaborador_id
+          ? nomesColaboradores[movimento.colaborador_id]
+          : "",
+      ]
+        .join(" ")
+        .toLowerCase()
+        .includes(termo),
+    );
+  }, [buscaMovimentos, movimentos, nomesColaboradores, nomesMateriais]);
+
+  const solicitacoesPendentes = useMemo(() => {
+    return solicitacoes.filter(
+      (solicitacao) => solicitacao.status === "PENDENTE",
+    );
+  }, [solicitacoes]);
+
   async function atualizarDados() {
     try {
       setCarregando(true);
@@ -186,6 +285,8 @@ export default function EstoquePage() {
       setMateriais(dados.materiais);
       setMovimentos(dados.movimentos);
       setColaboradores(dados.colaboradores);
+      setUnidades(dados.unidades);
+      setSolicitacoes(dados.solicitacoes);
       setErro(null);
     } catch (error) {
       console.error("Erro ao carregar estoque:", error);
@@ -201,7 +302,7 @@ export default function EstoquePage() {
       return;
     }
 
-    if (usuario.perfil !== "GESTOR") {
+    if (!podeAprovar) {
       router.replace("/tecnico");
       return;
     }
@@ -214,6 +315,8 @@ export default function EstoquePage() {
         setMateriais(dados.materiais);
         setMovimentos(dados.movimentos);
         setColaboradores(dados.colaboradores);
+        setUnidades(dados.unidades);
+        setSolicitacoes(dados.solicitacoes);
         setErro(null);
       })
       .catch((error: unknown) => {
@@ -228,7 +331,7 @@ export default function EstoquePage() {
     return () => {
       montado = false;
     };
-  }, [router, usuario]);
+  }, [router, usuario, podeAprovar]);
 
   async function cadastrarMaterial() {
     if (!nome.trim()) {
@@ -250,7 +353,7 @@ export default function EstoquePage() {
       if (error) throw error;
 
       setNome("");
-      setUnidade("unidade");
+      setUnidade("Unidade");
       setEstoqueMinimo("0");
       setPeriodicidade("SEM_PREVISAO");
       setUltimoRecebimento("");
@@ -313,6 +416,81 @@ export default function EstoquePage() {
     }
   }
 
+  function abrirEdicaoMaterial(material: MaterialEstoque) {
+    setMaterialEmEdicao(material);
+    setEditNome(material.nome);
+    setEditUnidade(material.unidade || "Unidade");
+    setEditEstoqueMinimo(String(numero(material.estoque_minimo)));
+    setEditPeriodicidade(material.periodicidade as PeriodicidadeEstoque);
+    setEditUltimoRecebimento(material.ultimo_recebimento ?? "");
+    setErro(null);
+  }
+
+  async function salvarEdicaoMaterial() {
+    if (!materialEmEdicao) return;
+
+    if (!editNome.trim()) {
+      setErro("Informe o nome do material.");
+      return;
+    }
+
+    try {
+      setSalvando(true);
+      const supabase = getSupabase();
+      const { error } = await supabase.rpc("atualizar_material_estoque", {
+        material_id_input: materialEmEdicao.id,
+        nome_input: editNome,
+        unidade_input: editUnidade,
+        estoque_minimo_input: Number(editEstoqueMinimo || 0),
+        periodicidade_input: editPeriodicidade,
+        ultimo_recebimento_input: editUltimoRecebimento || null,
+      });
+
+      if (error) throw error;
+
+      setMaterialEmEdicao(null);
+      await atualizarDados();
+    } catch (error) {
+      console.error("Erro ao editar material:", error);
+      setErro(getErrorMessage(error));
+    } finally {
+      setSalvando(false);
+    }
+  }
+
+  async function responderSolicitacao(
+    solicitacao: SolicitacaoMaterial,
+    autorizar: boolean,
+  ) {
+    if (!usuario) return;
+
+    const mensagem = autorizar
+      ? "Autorizar esta solicitacao e baixar o saldo do estoque?"
+      : "Recusar esta solicitacao de material?";
+
+    if (!window.confirm(mensagem)) return;
+
+    try {
+      setSalvando(true);
+      const supabase = getSupabase();
+      const { error } = await supabase.rpc("responder_solicitacao_material", {
+        solicitacao_id_input: solicitacao.id,
+        autorizador_id_input: usuario.id,
+        autorizar_input: autorizar,
+        observacao_input: autorizar ? "Autorizada" : "Recusada",
+      });
+
+      if (error) throw error;
+
+      await atualizarDados();
+    } catch (error) {
+      console.error("Erro ao responder solicitacao:", error);
+      setErro(getErrorMessage(error));
+    } finally {
+      setSalvando(false);
+    }
+  }
+
   return (
     <main className="min-h-screen bg-slate-100 text-slate-950">
       <div className="mx-auto flex w-full max-w-7xl flex-col gap-6 px-5 py-6 lg:px-8">
@@ -361,7 +539,7 @@ export default function EstoquePage() {
           </div>
         )}
 
-        <section className="grid gap-4 md:grid-cols-3">
+        <section className="grid gap-4 md:grid-cols-4">
           <ResumoCard
             titulo="Materiais cadastrados"
             valor={materiais.length}
@@ -380,9 +558,98 @@ export default function EstoquePage() {
             detalhe="Ultimos registros exibidos"
             icon={CalendarClock}
           />
+          <ResumoCard
+            titulo="Solicitacoes"
+            valor={solicitacoesPendentes.length}
+            detalhe="Aguardando autorizacao"
+            icon={CheckCircle2}
+          />
         </section>
 
+        {podeAprovar && (
+          <section className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
+            <div className="mb-4 flex items-center justify-between gap-3">
+              <div>
+                <p className="text-xs font-bold uppercase tracking-wide text-amber-700">
+                  Solicitacoes de material
+                </p>
+                <h2 className="text-lg font-bold text-slate-950">
+                  Aguardando autorizacao
+                </h2>
+              </div>
+              <span className="rounded-full bg-amber-50 px-3 py-1 text-sm font-bold text-amber-700">
+                {solicitacoesPendentes.length} pendente(s)
+              </span>
+            </div>
+
+            {solicitacoesPendentes.length === 0 ? (
+              <div className="rounded-lg bg-slate-50 p-4 text-sm text-slate-500">
+                Nenhuma solicitacao de material pendente.
+              </div>
+            ) : (
+              <div className="grid gap-3 lg:grid-cols-2">
+                {solicitacoesPendentes.map((solicitacao) => {
+                  const material = nomesMateriais[solicitacao.material_id];
+                  const colaborador = nomesColaboradores[solicitacao.colaborador_id];
+                  const materialCompleto = materiais.find(
+                    (item) => item.id === solicitacao.material_id,
+                  );
+
+                  return (
+                    <div
+                      key={solicitacao.id}
+                      className="rounded-lg border border-slate-200 p-4"
+                    >
+                      <div className="flex items-start justify-between gap-3">
+                        <div>
+                          <p className="font-bold text-slate-900">
+                            {material || "Material"}
+                          </p>
+                          <p className="text-sm text-slate-500">
+                            Solicitado por: {colaborador || "Colaborador"}
+                          </p>
+                          <p className="text-sm text-slate-500">
+                            Quantidade: {numero(solicitacao.quantidade)}{" "}
+                            {materialCompleto?.unidade || ""}
+                          </p>
+                          <p className="mt-1 text-sm text-slate-700">
+                            {solicitacao.motivo}
+                          </p>
+                        </div>
+                        <span className="rounded-full bg-amber-50 px-2 py-1 text-xs font-bold text-amber-700">
+                          Pendente
+                        </span>
+                      </div>
+                      <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                        <button
+                          type="button"
+                          onClick={() => responderSolicitacao(solicitacao, true)}
+                          disabled={salvando}
+                          className="inline-flex h-10 items-center justify-center gap-2 rounded-md bg-emerald-700 px-3 text-sm font-bold text-white transition hover:bg-emerald-800 disabled:opacity-60"
+                        >
+                          <CheckCircle2 size={16} aria-hidden="true" />
+                          Autorizar
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => responderSolicitacao(solicitacao, false)}
+                          disabled={salvando}
+                          className="inline-flex h-10 items-center justify-center gap-2 rounded-md border border-red-200 bg-red-50 px-3 text-sm font-bold text-red-700 transition hover:bg-red-100 disabled:opacity-60"
+                        >
+                          <XCircle size={16} aria-hidden="true" />
+                          Recusar
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </section>
+        )}
+
         <section className="grid gap-4 xl:grid-cols-[1.1fr_0.9fr]">
+          {podeConfigurar && (
           <div className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
             <div className="mb-4 flex items-center gap-2">
               <PlusCircle size={18} className="text-emerald-700" />
@@ -390,7 +657,25 @@ export default function EstoquePage() {
             </div>
             <div className="grid gap-3 md:grid-cols-2">
               <Input label="Nome do material" value={nome} onChange={setNome} />
-              <Input label="Unidade" value={unidade} onChange={setUnidade} />
+              <label className="block">
+                <span className="mb-1 block text-sm font-semibold text-slate-700">
+                  Unidade de medida
+                </span>
+                <select
+                  value={unidade}
+                  onChange={(event) => setUnidade(event.target.value)}
+                  className="h-11 w-full rounded-md border border-slate-300 px-3 text-sm outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100"
+                >
+                  {(unidades.length > 0
+                    ? unidades.map((item) => item.nome)
+                    : ["Unidade", "Kg", "Metro", "Litro", "Pacote"]
+                  ).map((item) => (
+                    <option key={item} value={item}>
+                      {item}
+                    </option>
+                  ))}
+                </select>
+              </label>
               <Input
                 label="Estoque minimo"
                 type="number"
@@ -431,6 +716,7 @@ export default function EstoquePage() {
               {salvando ? "Salvando..." : "Cadastrar material"}
             </button>
           </div>
+          )}
 
           <div className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
             <h2 className="mb-4 font-bold text-slate-950">Alertas atuais</h2>
@@ -469,103 +755,123 @@ export default function EstoquePage() {
           </div>
         </section>
 
-        <section className="grid gap-4 xl:grid-cols-2">
-          <MovimentoBox
-            titulo="Registrar entrada"
-            icon={ArrowUpCircle}
-            materiais={materiais}
-            materialId={materialEntradaId}
-            setMaterialId={setMaterialEntradaId}
-            quantidade={quantidadeEntrada}
-            setQuantidade={setQuantidadeEntrada}
-            observacao={observacaoEntrada}
-            setObservacao={setObservacaoEntrada}
-            onSalvar={() => registrarMovimentacao("ENTRADA")}
-            disabled={salvando}
-            buttonLabel="Salvar entrada"
-          />
-
-          <div className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
-            <div className="mb-4 flex items-center gap-2">
-              <ArrowDownCircle size={18} className="text-red-700" />
-              <h2 className="font-bold text-slate-950">Registrar saida</h2>
-            </div>
-            <div className="grid gap-3 md:grid-cols-2">
-              <SelectMaterial
-                materiais={materiais}
-                value={materialSaidaId}
-                onChange={setMaterialSaidaId}
-              />
-              <Input
-                label="Quantidade"
-                type="number"
-                value={quantidadeSaida}
-                onChange={setQuantidadeSaida}
-              />
-              <label className="block">
-                <span className="mb-1 block text-sm font-semibold text-slate-700">
-                  Colaborador que retirou
-                </span>
-                <select
-                  value={colaboradorSaidaId}
-                  onChange={(event) => setColaboradorSaidaId(event.target.value)}
-                  className="h-11 w-full rounded-md border border-slate-300 px-3 text-sm outline-none focus:border-red-500 focus:ring-2 focus:ring-red-100"
-                >
-                  <option value="">Sem colaborador vinculado</option>
-                  {colaboradores.map((colaborador) => (
-                    <option key={colaborador.id} value={colaborador.id}>
-                      {colaborador.nome}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <Input
-                label="Motivo"
-                value={motivoSaida}
-                onChange={setMotivoSaida}
-                placeholder="Ex: cafe, limpeza, reposicao..."
-              />
-            </div>
-            <button
-              type="button"
-              onClick={() => registrarMovimentacao("SAIDA")}
+        {podeConfigurar && (
+          <section className="grid gap-4 xl:grid-cols-2">
+            <MovimentoBox
+              titulo="Registrar entrada"
+              icon={ArrowUpCircle}
+              materiais={materiais}
+              materialId={materialEntradaId}
+              setMaterialId={setMaterialEntradaId}
+              quantidade={quantidadeEntrada}
+              setQuantidade={setQuantidadeEntrada}
+              observacao={observacaoEntrada}
+              setObservacao={setObservacaoEntrada}
+              onSalvar={() => registrarMovimentacao("ENTRADA")}
               disabled={salvando}
-              className="mt-4 h-11 rounded-md bg-red-700 px-4 text-sm font-bold text-white transition hover:bg-red-800 disabled:opacity-60"
-            >
-              {salvando ? "Salvando..." : "Salvar saida"}
-            </button>
-          </div>
-        </section>
+              buttonLabel="Salvar entrada"
+            />
+
+            <div className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
+              <div className="mb-4 flex items-center gap-2">
+                <ArrowDownCircle size={18} className="text-red-700" />
+                <h2 className="font-bold text-slate-950">Registrar saida</h2>
+              </div>
+              <div className="grid gap-3 md:grid-cols-2">
+                <SelectMaterial
+                  materiais={materiais}
+                  value={materialSaidaId}
+                  onChange={setMaterialSaidaId}
+                />
+                <Input
+                  label="Quantidade"
+                  type="number"
+                  value={quantidadeSaida}
+                  onChange={setQuantidadeSaida}
+                />
+                <label className="block">
+                  <span className="mb-1 block text-sm font-semibold text-slate-700">
+                    Colaborador que retirou
+                  </span>
+                  <select
+                    value={colaboradorSaidaId}
+                    onChange={(event) => setColaboradorSaidaId(event.target.value)}
+                    className="h-11 w-full rounded-md border border-slate-300 px-3 text-sm outline-none focus:border-red-500 focus:ring-2 focus:ring-red-100"
+                  >
+                    <option value="">Sem colaborador vinculado</option>
+                    {colaboradores.map((colaborador) => (
+                      <option key={colaborador.id} value={colaborador.id}>
+                        {colaborador.nome}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <Input
+                  label="Motivo"
+                  value={motivoSaida}
+                  onChange={setMotivoSaida}
+                  placeholder="Ex: cafe, limpeza, reposicao..."
+                />
+              </div>
+              <button
+                type="button"
+                onClick={() => registrarMovimentacao("SAIDA")}
+                disabled={salvando}
+                className="mt-4 h-11 rounded-md bg-red-700 px-4 text-sm font-bold text-white transition hover:bg-red-800 disabled:opacity-60"
+              >
+                {salvando ? "Salvando..." : "Salvar saida"}
+              </button>
+            </div>
+          </section>
+        )}
 
         <section className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
-          <h2 className="mb-4 font-bold text-slate-950">Materiais</h2>
+          <div className="mb-4 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+            <h2 className="font-bold text-slate-950">Materiais</h2>
+            <label className="relative block w-full md:w-80">
+              <Search
+                size={16}
+                className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"
+                aria-hidden="true"
+              />
+              <span className="sr-only">Buscar material</span>
+              <input
+                value={buscaMateriais}
+                onChange={(event) => setBuscaMateriais(event.target.value)}
+                placeholder="Buscar por nome, unidade..."
+                className="h-10 w-full rounded-md border border-slate-300 bg-white pl-9 pr-3 text-sm outline-none transition focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100"
+              />
+            </label>
+          </div>
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[780px] text-left text-sm">
+            <table className="w-full min-w-[860px] text-left text-sm">
               <thead className="bg-slate-50 text-xs uppercase text-slate-500">
                 <tr>
                   <th className="px-3 py-3">Material</th>
-                  <th className="px-3 py-3">Saldo</th>
+                  <th className="px-3 py-3">Quantidade</th>
                   <th className="px-3 py-3">Minimo</th>
                   <th className="px-3 py-3">Periodicidade</th>
                   <th className="px-3 py-3">Ultimo recebimento</th>
                   <th className="px-3 py-3">Proximo previsto</th>
+                  <th className="px-3 py-3">Acoes</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
-                {materiais.length === 0 ? (
+                {materiaisFiltrados.length === 0 ? (
                   <tr>
-                    <td className="px-3 py-4 text-slate-500" colSpan={6}>
+                    <td className="px-3 py-4 text-slate-500" colSpan={7}>
                       Nenhum material cadastrado.
                     </td>
                   </tr>
                 ) : (
-                  materiais.map((material) => (
+                  materiaisFiltrados.map((material) => (
                     <tr key={material.id}>
                       <td className="px-3 py-3 font-bold text-slate-900">
                         {material.nome}
                       </td>
                       <td className="px-3 py-3">
-                        {numero(material.quantidade_atual)} {material.unidade}
+                        Quantidade: {numero(material.quantidade_atual)}{" "}
+                        {material.unidade}
                       </td>
                       <td className="px-3 py-3">
                         {numero(material.estoque_minimo)}
@@ -581,6 +887,22 @@ export default function EstoquePage() {
                       <td className="px-3 py-3">
                         {formatDate(material.proximo_recebimento)}
                       </td>
+                      <td className="px-3 py-3">
+                        {podeConfigurar ? (
+                          <button
+                            type="button"
+                            onClick={() => abrirEdicaoMaterial(material)}
+                            className="inline-flex h-9 items-center gap-2 rounded-md border border-slate-300 px-3 text-xs font-bold text-slate-700 transition hover:bg-slate-50"
+                          >
+                            <Pencil size={14} aria-hidden="true" />
+                            Editar
+                          </button>
+                        ) : (
+                          <span className="text-xs text-slate-400">
+                            Somente gestor
+                          </span>
+                        )}
+                      </td>
                     </tr>
                   ))
                 )}
@@ -590,16 +912,30 @@ export default function EstoquePage() {
         </section>
 
         <section className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
-          <h2 className="mb-4 font-bold text-slate-950">
-            Ultimas movimentacoes
-          </h2>
+          <div className="mb-4 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+            <h2 className="font-bold text-slate-950">Ultimas movimentacoes</h2>
+            <label className="relative block w-full md:w-80">
+              <Search
+                size={16}
+                className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"
+                aria-hidden="true"
+              />
+              <span className="sr-only">Buscar movimentacao</span>
+              <input
+                value={buscaMovimentos}
+                onChange={(event) => setBuscaMovimentos(event.target.value)}
+                placeholder="Buscar por material, motivo..."
+                className="h-10 w-full rounded-md border border-slate-300 bg-white pl-9 pr-3 text-sm outline-none transition focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100"
+              />
+            </label>
+          </div>
           <div className="space-y-2">
-            {movimentos.length === 0 ? (
+            {movimentosFiltrados.length === 0 ? (
               <div className="rounded-lg bg-slate-50 p-4 text-sm text-slate-500">
                 Nenhuma movimentacao registrada.
               </div>
             ) : (
-              movimentos.map((movimento) => (
+              movimentosFiltrados.map((movimento) => (
                 <div
                   key={movimento.id}
                   className="flex flex-col gap-1 rounded-lg border border-slate-200 p-3 md:flex-row md:items-center md:justify-between"
@@ -610,7 +946,7 @@ export default function EstoquePage() {
                       {movimento.tipo === "ENTRADA" ? " entrada" : " saida"}
                     </p>
                     <p className="text-sm text-slate-500">
-                      {numero(movimento.quantidade)} unidade(s)
+                      Quantidade: {numero(movimento.quantidade)}
                       {movimento.colaborador_id
                         ? ` | ${nomesColaboradores[movimento.colaborador_id]}`
                         : ""}
@@ -631,6 +967,103 @@ export default function EstoquePage() {
           </div>
         </section>
       </div>
+
+      {materialEmEdicao && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/50 px-4 py-6">
+          <div className="w-full max-w-lg rounded-lg bg-white shadow-xl">
+            <div className="flex items-start justify-between gap-4 border-b border-slate-200 p-5">
+              <div>
+                <p className="text-xs font-bold uppercase tracking-wide text-emerald-700">
+                  Editar material
+                </p>
+                <h2 className="mt-1 text-xl font-bold text-slate-950">
+                  {materialEmEdicao.nome}
+                </h2>
+              </div>
+              <button
+                type="button"
+                onClick={() => setMaterialEmEdicao(null)}
+                className="rounded-md p-2 text-slate-500 transition hover:bg-slate-100"
+                aria-label="Fechar edicao"
+              >
+                <XCircle size={18} aria-hidden="true" />
+              </button>
+            </div>
+
+            <div className="grid gap-3 p-5 md:grid-cols-2">
+              <Input label="Nome do material" value={editNome} onChange={setEditNome} />
+              <label className="block">
+                <span className="mb-1 block text-sm font-semibold text-slate-700">
+                  Unidade de medida
+                </span>
+                <select
+                  value={editUnidade}
+                  onChange={(event) => setEditUnidade(event.target.value)}
+                  className="h-11 w-full rounded-md border border-slate-300 px-3 text-sm outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100"
+                >
+                  {(unidades.length > 0
+                    ? unidades.map((item) => item.nome)
+                    : ["Unidade", "Kg", "Metro", "Litro", "Pacote"]
+                  ).map((item) => (
+                    <option key={item} value={item}>
+                      {item}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <Input
+                label="Estoque minimo"
+                type="number"
+                value={editEstoqueMinimo}
+                onChange={setEditEstoqueMinimo}
+              />
+              <label className="block">
+                <span className="mb-1 block text-sm font-semibold text-slate-700">
+                  Periodicidade
+                </span>
+                <select
+                  value={editPeriodicidade}
+                  onChange={(event) =>
+                    setEditPeriodicidade(event.target.value as PeriodicidadeEstoque)
+                  }
+                  className="h-11 w-full rounded-md border border-slate-300 px-3 text-sm outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100"
+                >
+                  {periodicidades.map((item) => (
+                    <option key={item} value={item}>
+                      {periodicidadeLabels[item]}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <Input
+                label="Ultimo recebimento"
+                type="date"
+                value={editUltimoRecebimento}
+                onChange={setEditUltimoRecebimento}
+              />
+            </div>
+
+            <div className="flex flex-col-reverse gap-2 border-t border-slate-200 p-5 sm:flex-row sm:justify-end">
+              <button
+                type="button"
+                onClick={() => setMaterialEmEdicao(null)}
+                disabled={salvando}
+                className="h-10 rounded-md border border-slate-300 px-4 text-sm font-bold text-slate-700 transition hover:bg-slate-50 disabled:opacity-60"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={salvarEdicaoMaterial}
+                disabled={salvando}
+                className="h-10 rounded-md bg-emerald-700 px-4 text-sm font-bold text-white transition hover:bg-emerald-800 disabled:opacity-60"
+              >
+                {salvando ? "Salvando..." : "Salvar alteracoes"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </main>
   );
 }
@@ -711,8 +1144,8 @@ function SelectMaterial({
         <option value="">Escolha um material</option>
         {materiais.map((material) => (
           <option key={material.id} value={material.id}>
-            {material.nome} ({numero(material.quantidade_atual)}{" "}
-            {material.unidade})
+            {material.nome} - Quantidade: {numero(material.quantidade_atual)}{" "}
+            {material.unidade}
           </option>
         ))}
       </select>

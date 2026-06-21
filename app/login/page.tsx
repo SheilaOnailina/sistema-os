@@ -45,16 +45,28 @@ export default function LoginPage() {
 
       if (error) throw error;
 
-      const usuario = data?.[0] as Colaborador | undefined;
+      const usuarioBase = data?.[0] as Colaborador | undefined;
 
-      if (!usuario) {
+      if (!usuarioBase) {
         setErro("CPF ou senha invalidos.");
         return;
       }
 
+      const { data: usuarioCompleto } = await supabase
+        .from("colaboradores")
+        .select("*")
+        .eq("id", usuarioBase.id)
+        .maybeSingle();
+
+      const usuario = (usuarioCompleto as Colaborador | null) ?? usuarioBase;
+
       localStorage.setItem(sessionKey, JSON.stringify(usuario));
 
-      router.push(usuario.perfil === "GESTOR" ? "/dashboard" : "/tecnico");
+      router.push(
+        usuario.perfil === "GESTOR" || usuario.perfil === "ENCARREGADO"
+          ? "/dashboard"
+          : "/tecnico",
+      );
     } catch (error) {
       console.error("Erro no login:", error);
       setErro(getErrorMessage(error));

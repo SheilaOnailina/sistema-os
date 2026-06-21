@@ -36,6 +36,13 @@ type StatusKey =
 type FiltroDashboard = StatusKey | "INSUMOS" | null;
 const sessionKey = "sistema-os-colaborador";
 
+function getSessaoInicial() {
+  if (typeof window === "undefined") return null;
+
+  const sessao = localStorage.getItem(sessionKey);
+  return sessao ? (JSON.parse(sessao) as Colaborador) : null;
+}
+
 type EdicaoOS = {
   id: string;
   numeroOs: OrdemServico["numero_os"];
@@ -208,6 +215,7 @@ function formatWhatsAppPhone(value?: string | null) {
 
 export default function DashboardPage() {
   const router = useRouter();
+  const [usuario] = useState<Colaborador | null>(getSessaoInicial);
   const [ordens, setOrdens] = useState<OrdemServico[]>([]);
   const [ocorrencias, setOcorrencias] = useState<Ocorrencia[]>([]);
   const [colaboradores, setColaboradores] = useState<Colaborador[]>([]);
@@ -229,6 +237,9 @@ export default function DashboardPage() {
   const [ordemEmEdicao, setOrdemEmEdicao] = useState<EdicaoOS | null>(null);
   const [salvandoEdicao, setSalvandoEdicao] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
+  const usuarioGestor = usuario?.perfil === "GESTOR";
+  const usuarioOperador =
+    usuario?.perfil === "GESTOR" || usuario?.perfil === "ENCARREGADO";
 
   async function carregarOrdens() {
     try {
@@ -248,6 +259,16 @@ export default function DashboardPage() {
   }
 
   useEffect(() => {
+    if (!usuario) {
+      router.replace("/login");
+      return;
+    }
+
+    if (!usuarioOperador) {
+      router.replace("/tecnico");
+      return;
+    }
+
     let montado = true;
 
     carregarDadosDashboard()
@@ -270,7 +291,7 @@ export default function DashboardPage() {
     return () => {
       montado = false;
     };
-  }, []);
+  }, [router, usuario, usuarioOperador]);
 
   const nomesColaboradores = useMemo(() => {
     return colaboradores.reduce<Record<string, string>>((mapa, colaborador) => {
@@ -745,12 +766,14 @@ export default function DashboardPage() {
             >
               Nova OS
             </Link>
-            <Link
-              href="/dashboard/colaboradores"
-              className="inline-flex h-10 items-center justify-center rounded-md border border-slate-300 px-4 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
-            >
-              Colaboradores
-            </Link>
+            {usuarioGestor && (
+              <Link
+                href="/dashboard/colaboradores"
+                className="inline-flex h-10 items-center justify-center rounded-md border border-slate-300 px-4 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
+              >
+                Colaboradores
+              </Link>
+            )}
             <Link
               href="/dashboard/estoque"
               className="inline-flex h-10 items-center justify-center rounded-md border border-slate-300 px-4 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
@@ -1343,14 +1366,20 @@ export default function DashboardPage() {
                             </button>
                           </td>
                           <td className="whitespace-nowrap px-4 py-3">
-                            <button
-                              type="button"
-                              onClick={() => excluirOrdem(ordem)}
-                              className="inline-flex h-9 items-center gap-2 rounded-md border border-red-200 bg-red-50 px-3 text-xs font-bold text-red-700 transition hover:bg-red-100"
-                            >
-                              <Trash2 size={14} aria-hidden="true" />
-                              Excluir
-                            </button>
+                            {usuarioGestor ? (
+                              <button
+                                type="button"
+                                onClick={() => excluirOrdem(ordem)}
+                                className="inline-flex h-9 items-center gap-2 rounded-md border border-red-200 bg-red-50 px-3 text-xs font-bold text-red-700 transition hover:bg-red-100"
+                              >
+                                <Trash2 size={14} aria-hidden="true" />
+                                Excluir
+                              </button>
+                            ) : (
+                              <span className="text-xs text-slate-400">
+                                Restrito ao gestor
+                              </span>
+                            )}
                           </td>
                           <td className="min-w-[190px] px-4 py-3">
                             {ordem.status === "CONCLUIDA" ? (
