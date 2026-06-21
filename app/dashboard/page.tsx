@@ -297,6 +297,12 @@ export default function DashboardPage() {
     );
   }, [ocorrencias]);
 
+  const ordensAguardandoValidacao = useMemo(() => {
+    return ordens
+      .filter((ordem) => ordem.status === "AGUARDANDO_VALIDACAO")
+      .sort(ordenarOrdens);
+  }, [ordens]);
+
   const indicadores = useMemo(() => {
     const abertas = ordens.filter((ordem) => ordem.status === "ABERTA").length;
     const emExecucao = ordens.filter(
@@ -872,6 +878,94 @@ export default function DashboardPage() {
                       Arquivar
                     </button>
                   </div>
+                </div>
+              ))
+            )}
+          </div>
+        </section>
+
+        <section className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
+          <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+            <div>
+              <p className="text-xs font-bold uppercase tracking-wide text-violet-700">
+                Ordens solicitadas
+              </p>
+              <h2 className="mt-1 text-lg font-bold text-slate-950">
+                Aguardando validacao do gestor
+              </h2>
+              <p className="text-sm text-slate-500">
+                Demandas enviadas por colaboradores antes de entrar na fila de
+                execucao.
+              </p>
+            </div>
+            <span className="rounded-full bg-violet-50 px-3 py-1 text-sm font-bold text-violet-700">
+              {ordensAguardandoValidacao.length} pendente(s)
+            </span>
+          </div>
+
+          <div className="mt-4 space-y-3">
+            {ordensAguardandoValidacao.length === 0 ? (
+              <div className="rounded-lg bg-slate-50 p-4 text-sm text-slate-500">
+                Nenhuma OS aguardando validacao.
+              </div>
+            ) : (
+              ordensAguardandoValidacao.map((ordem) => (
+                <div
+                  key={ordem.id}
+                  className="grid gap-3 rounded-lg border border-slate-200 p-4 lg:grid-cols-[1fr_180px]"
+                >
+                  <div>
+                    <div className="mb-1 flex flex-wrap items-center gap-2">
+                      <span className="font-mono text-sm font-bold text-slate-900">
+                        OS #{ordem.numero_os}
+                      </span>
+                      <span className="rounded-full bg-violet-50 px-2 py-0.5 text-xs font-bold uppercase text-violet-700">
+                        Aguardando validacao
+                      </span>
+                      {normalizePrioridade(ordem.prioridade) !== "NORMAL" && (
+                        <span
+                          className={`rounded-full border px-2 py-0.5 text-xs font-bold ${
+                            prioridadeStyles[
+                              normalizePrioridade(ordem.prioridade)
+                            ]
+                          }`}
+                        >
+                          {
+                            prioridadeLabels[
+                              normalizePrioridade(ordem.prioridade)
+                            ]
+                          }
+                        </span>
+                      )}
+                      <span className="text-xs text-slate-400">
+                        {formatDate(ordem.data_abertura)}
+                      </span>
+                    </div>
+                    <p className="font-semibold text-slate-800">
+                      {ordem.local}
+                    </p>
+                    <p className="mt-1 text-sm text-slate-600">
+                      {ordem.descricao}
+                    </p>
+                    <p className="mt-2 text-xs text-slate-500">
+                      Solicitante: {ordem.solicitante || "-"}
+                      {" | "}
+                      Tecnico indicado:{" "}
+                      {ordem.colaborador_id
+                        ? nomesColaboradores[ordem.colaborador_id] ||
+                          "Nao encontrado"
+                        : "Sem tecnico"}
+                    </p>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() => validarDemanda(ordem)}
+                    disabled={validandoId === ordem.id}
+                    className="h-10 rounded-md bg-violet-700 px-3 text-sm font-bold text-white transition hover:bg-violet-800 disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    Virar OS
+                  </button>
                 </div>
               ))
             )}
