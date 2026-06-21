@@ -1215,9 +1215,9 @@ export default function DashboardPage() {
             }}
           />
           <Indicador
-            titulo="Abertas"
+            titulo="OS abertas"
             valor={indicadores.abertas}
-            detalhe="Clique para filtrar"
+            detalhe="Abertas no periodo"
             icon={AlertCircle}
             carregando={carregando}
             ativo={filtroDashboard === "ABERTA"}
