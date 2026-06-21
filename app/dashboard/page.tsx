@@ -7,6 +7,7 @@ import {
   AlertCircle,
   CheckCircle2,
   ClipboardList,
+  FileDown,
   Hammer,
   KeyRound,
   LogOut,
@@ -166,6 +167,39 @@ function formatDate(value?: string | null) {
   }).format(new Date(value));
 }
 
+function inicioDaSemanaAtualDate() {
+  const hoje = new Date();
+  const diaDaSemana = hoje.getDay();
+  const diasDesdeSegunda = diaDaSemana === 0 ? 6 : diaDaSemana - 1;
+  const inicio = new Date(hoje);
+  inicio.setDate(hoje.getDate() - diasDesdeSegunda);
+  inicio.setHours(0, 0, 0, 0);
+  return inicio;
+}
+
+function toInputDate(value: Date) {
+  return value.toISOString().slice(0, 10);
+}
+
+function getOrdemDataBase(ordem: OrdemServico) {
+  return ordem.data_abertura || ordem.data_inicio || ordem.data_conclusao || null;
+}
+
+function estaNoPeriodo(
+  ordem: OrdemServico,
+  inicio: string,
+  fim: string,
+) {
+  const dataBase = getOrdemDataBase(ordem);
+  if (!dataBase) return false;
+
+  const data = new Date(dataBase);
+  if (inicio && data < new Date(`${inicio}T00:00:00`)) return false;
+  if (fim && data > new Date(`${fim}T23:59:59`)) return false;
+
+  return true;
+}
+
 function normalizeStatus(status: string): StatusKey | "OUTRO" {
   if (
     status === "ABERTA" ||
@@ -221,6 +255,11 @@ export default function DashboardPage() {
   const [colaboradores, setColaboradores] = useState<Colaborador[]>([]);
   const [busca, setBusca] = useState("");
   const [filtroDashboard, setFiltroDashboard] = useState<FiltroDashboard>(null);
+  const [mostrarRelatorioOS, setMostrarRelatorioOS] = useState(false);
+  const [dataInicialOS, setDataInicialOS] = useState(() =>
+    toInputDate(inicioDaSemanaAtualDate()),
+  );
+  const [dataFinalOS, setDataFinalOS] = useState(() => toInputDate(new Date()));
   const [filtroColaboradorId, setFiltroColaboradorId] = useState<string | null>(
     null,
   );
@@ -327,26 +366,32 @@ export default function DashboardPage() {
       .sort(ordenarOrdens);
   }, [ordens]);
 
+  const ordensNoPeriodo = useMemo(() => {
+    return ordens.filter((ordem) =>
+      estaNoPeriodo(ordem, dataInicialOS, dataFinalOS),
+    );
+  }, [dataFinalOS, dataInicialOS, ordens]);
+
   const indicadores = useMemo(() => {
-    const abertas = ordens.filter((ordem) => ordem.status === "ABERTA").length;
-    const emExecucao = ordens.filter(
+    const abertas = ordensNoPeriodo.filter((ordem) => ordem.status === "ABERTA").length;
+    const emExecucao = ordensNoPeriodo.filter(
       (ordem) => ordem.status === "EM_EXECUCAO",
     ).length;
-    const concluidas = ordens.filter(
+    const concluidas = ordensNoPeriodo.filter(
       (ordem) => ordem.status === "CONCLUIDA",
     ).length;
-    const incompletas = ordens.filter(
+    const incompletas = ordensNoPeriodo.filter(
       (ordem) => ordem.status === "INCOMPLETA",
     ).length;
-    const aguardandoValidacao = ordens.filter(
+    const aguardandoValidacao = ordensNoPeriodo.filter(
       (ordem) => ordem.status === "AGUARDANDO_VALIDACAO",
     ).length;
-    const comInsumos = ordens.filter((ordem) =>
+    const comInsumos = ordensNoPeriodo.filter((ordem) =>
       ordem.insumos_utilizados?.trim(),
     ).length;
 
     return {
-      total: ordens.length,
+      total: ordensNoPeriodo.length,
       abertas,
       emExecucao,
       concluidas,
@@ -354,7 +399,7 @@ export default function DashboardPage() {
       aguardandoValidacao,
       comInsumos,
     };
-  }, [ordens]);
+  }, [ordensNoPeriodo]);
 
   const rankingColaboradores = useMemo(() => {
     return colaboradores
@@ -399,7 +444,7 @@ export default function DashboardPage() {
   }, [colaboradores, ordens]);
 
   const ordensFiltradas = useMemo(() => {
-    const ordensPorFiltro = ordens.filter((ordem) => {
+    const ordensPorFiltro = ordensNoPeriodo.filter((ordem) => {
       if (!filtroDashboard) return true;
       if (filtroDashboard === "INSUMOS") {
         return Boolean(ordem.insumos_utilizados?.trim());
@@ -433,7 +478,13 @@ export default function DashboardPage() {
 
       return texto.includes(termo);
     }).sort(ordenarOrdens);
-  }, [busca, filtroColaboradorId, filtroDashboard, nomesColaboradores, ordens]);
+  }, [
+    busca,
+    filtroColaboradorId,
+    filtroDashboard,
+    nomesColaboradores,
+    ordensNoPeriodo,
+  ]);
 
   const tituloFiltro = useMemo(() => {
     const statusTexto =
@@ -738,6 +789,71 @@ export default function DashboardPage() {
     }
   }
 
+  function aplicarRelatorioMesAtual() {
+    const hoje = new Date();
+    setDataInicialOS(toInputDate(new Date(hoje.getFullYear(), hoje.getMonth(), 1)));
+    setDataFinalOS(toInputDate(hoje));
+    setMostrarRelatorioOS(true);
+  }
+
+  function limparRelatorioOS() {
+    setDataInicialOS(toInputDate(inicioDaSemanaAtualDate()));
+    setDataFinalOS(toInputDate(new Date()));
+    setFiltroDashboard(null);
+    setFiltroColaboradorId(null);
+    setBusca("");
+    setMostrarRelatorioOS(false);
+  }
+
+  function exportarOrdensCsv() {
+    const linhas = [
+      [
+        "numero_os",
+        "status",
+        "prioridade",
+        "local",
+        "solicitante",
+        "tecnico",
+        "descricao",
+        "insumos",
+        "relato_tecnico",
+        "abertura",
+        "conclusao",
+      ],
+      ...ordensFiltradas.map((ordem) => [
+        String(ordem.numero_os),
+        ordem.status || "",
+        normalizePrioridade(ordem.prioridade),
+        ordem.local || "",
+        ordem.solicitante || "",
+        ordem.colaborador_id ? nomesColaboradores[ordem.colaborador_id] || "" : "",
+        ordem.descricao || "",
+        ordem.insumos_utilizados || "",
+        ordem.relato_tecnico || "",
+        ordem.data_abertura ? formatDate(ordem.data_abertura) : "",
+        ordem.data_conclusao ? formatDate(ordem.data_conclusao) : "",
+      ]),
+    ];
+
+    const csv = linhas
+      .map((linha) =>
+        linha
+          .map((campo) => `"${String(campo).replace(/"/g, '""')}"`)
+          .join(";"),
+      )
+      .join("\n");
+
+    const blob = new Blob([`\uFEFF${csv}`], {
+      type: "text/csv;charset=utf-8;",
+    });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `relatorio-os-${new Date().toISOString().slice(0, 10)}.csv`;
+    link.click();
+    URL.revokeObjectURL(url);
+  }
+
   function sair() {
     localStorage.removeItem(sessionKey);
     router.push("/login");
@@ -1028,6 +1144,62 @@ export default function DashboardPage() {
           )}
         </section>
 
+        <section className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
+          <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
+            <div>
+              <p className="text-xs font-bold uppercase tracking-wide text-blue-700">
+                Periodo dos indicadores
+              </p>
+              <h2 className="text-lg font-bold text-slate-950">
+                Resumo de OS
+              </h2>
+              <p className="text-sm text-slate-500">
+                Por padrao, os cards mostram somente a semana atual.
+              </p>
+            </div>
+            <div className="grid gap-2 sm:grid-cols-[1fr_1fr_auto_auto]">
+              <label className="block">
+                <span className="mb-1 block text-xs font-bold uppercase text-slate-500">
+                  Data inicial
+                </span>
+                <input
+                  type="date"
+                  value={dataInicialOS}
+                  onChange={(event) => setDataInicialOS(event.target.value)}
+                  className="h-10 rounded-md border border-slate-300 px-3 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                />
+              </label>
+              <label className="block">
+                <span className="mb-1 block text-xs font-bold uppercase text-slate-500">
+                  Data final
+                </span>
+                <input
+                  type="date"
+                  value={dataFinalOS}
+                  onChange={(event) => setDataFinalOS(event.target.value)}
+                  className="h-10 rounded-md border border-slate-300 px-3 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                />
+              </label>
+              <button
+                type="button"
+                onClick={aplicarRelatorioMesAtual}
+                className="h-10 self-end rounded-md border border-slate-300 px-3 text-xs font-bold text-slate-700 transition hover:bg-slate-50"
+              >
+                Relatorio do mes
+              </button>
+              <button
+                type="button"
+                onClick={exportarOrdensCsv}
+                disabled={!mostrarRelatorioOS || ordensFiltradas.length === 0}
+                className="inline-flex h-10 items-center justify-center gap-2 self-end rounded-md bg-slate-900 px-3 text-xs font-bold text-white transition hover:bg-slate-800 disabled:opacity-60"
+              >
+                <FileDown size={14} aria-hidden="true" />
+                Exportar
+              </button>
+            </div>
+          </div>
+        </section>
+
         <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
           <Indicador
             titulo="Total de OS"
@@ -1039,6 +1211,7 @@ export default function DashboardPage() {
             onClick={() => {
               setFiltroDashboard(null);
               setFiltroColaboradorId(null);
+              setMostrarRelatorioOS(true);
             }}
           />
           <Indicador
@@ -1051,6 +1224,7 @@ export default function DashboardPage() {
             onClick={() => {
               setFiltroDashboard("ABERTA");
               setFiltroColaboradorId(null);
+              setMostrarRelatorioOS(true);
             }}
           />
           <Indicador
@@ -1063,6 +1237,7 @@ export default function DashboardPage() {
             onClick={() => {
               setFiltroDashboard("EM_EXECUCAO");
               setFiltroColaboradorId(null);
+              setMostrarRelatorioOS(true);
             }}
           />
           <Indicador
@@ -1075,6 +1250,7 @@ export default function DashboardPage() {
             onClick={() => {
               setFiltroDashboard("INSUMOS");
               setFiltroColaboradorId(null);
+              setMostrarRelatorioOS(true);
             }}
           />
           <Indicador
@@ -1087,6 +1263,7 @@ export default function DashboardPage() {
             onClick={() => {
               setFiltroDashboard("AGUARDANDO_VALIDACAO");
               setFiltroColaboradorId(null);
+              setMostrarRelatorioOS(true);
             }}
           />
         </section>
@@ -1180,6 +1357,7 @@ export default function DashboardPage() {
                       onClick={() => {
                         setFiltroColaboradorId(colaborador.id);
                         setFiltroDashboard(null);
+                        setMostrarRelatorioOS(true);
                       }}
                       className={`w-full rounded-md border bg-slate-50 p-3 text-left transition hover:border-blue-300 hover:bg-white hover:shadow-sm ${
                         filtroColaboradorId === colaborador.id
@@ -1229,13 +1407,31 @@ export default function DashboardPage() {
           </div>
 
           <div className="rounded-lg border border-slate-200 bg-white shadow-sm">
+            {!mostrarRelatorioOS ? (
+              <div className="flex min-h-[320px] flex-col items-center justify-center p-8 text-center">
+                <ClipboardList
+                  size={36}
+                  className="mb-3 text-slate-300"
+                  aria-hidden="true"
+                />
+                <h2 className="text-base font-bold text-slate-900">
+                  Selecione um card para ver as OS
+                </h2>
+                <p className="mt-2 max-w-md text-sm text-slate-500">
+                  A primeira tela fica como resumo. Clique em Total, Abertas,
+                  Em execucao, Com insumos, Aguardando validacao ou em um
+                  colaborador do ranking para abrir a lista filtrada.
+                </p>
+              </div>
+            ) : (
+              <>
             <div className="flex flex-col gap-3 border-b border-slate-200 p-5 md:flex-row md:items-center md:justify-between">
               <div>
                 <h2 className="text-base font-bold text-slate-900">
                   Relatorio de ordens - {tituloFiltro}
                 </h2>
                 <p className="text-sm text-slate-500">
-                  {ordensFiltradas.length} de {ordens.length} registros exibidos.
+                  {ordensFiltradas.length} de {ordensNoPeriodo.length} registros no periodo.
                 </p>
               </div>
 
@@ -1246,12 +1442,20 @@ export default function DashboardPage() {
                     onClick={() => {
                       setFiltroDashboard(null);
                       setFiltroColaboradorId(null);
+                      setMostrarRelatorioOS(false);
                     }}
                     className="h-10 rounded-md border border-slate-300 px-3 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
                   >
                     Limpar filtro
                   </button>
                 )}
+                <button
+                  type="button"
+                  onClick={limparRelatorioOS}
+                  className="h-10 rounded-md border border-slate-300 px-3 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
+                >
+                  Fechar relatorio
+                </button>
                 <label className="relative block w-full md:w-80">
                   <Search
                     size={16}
@@ -1459,6 +1663,8 @@ export default function DashboardPage() {
                 </tbody>
               </table>
             </div>
+              </>
+            )}
           </div>
         </section>
       </div>

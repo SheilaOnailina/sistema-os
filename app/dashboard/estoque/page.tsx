@@ -128,7 +128,6 @@ async function carregarEstoque() {
       supabase
         .from("materiais_estoque")
         .select("*")
-        .eq("ativo", true)
         .order("nome", { ascending: true }),
       supabase
         .from("movimentacoes_estoque")
@@ -219,6 +218,7 @@ export default function EstoquePage() {
   const [colaboradorSaidaId, setColaboradorSaidaId] = useState("");
   const [motivoSaida, setMotivoSaida] = useState("");
   const [buscaMateriais, setBuscaMateriais] = useState("");
+  const [mostrarInativos, setMostrarInativos] = useState(false);
   const [buscaMovimentos, setBuscaMovimentos] = useState("");
   const [filtroInicio, setFiltroInicio] = useState(() =>
     toInputDate(inicioDaSemanaAtualDate()),
@@ -261,21 +261,29 @@ export default function EstoquePage() {
     }, {});
   }, [colaboradores]);
 
+  const materiaisAtivos = useMemo(() => {
+    return materiais.filter((material) => material.ativo);
+  }, [materiais]);
+
   const alertas = useMemo(() => {
-    return materiais.filter((material) => {
+    return materiaisAtivos.filter((material) => {
       const saldoBaixo =
         numero(material.quantidade_atual) <= numero(material.estoque_minimo);
       const dias = diasAte(material.proximo_recebimento);
       const recebimentoProximo = dias !== null && dias <= 30;
       return saldoBaixo || recebimentoProximo;
     });
-  }, [materiais]);
+  }, [materiaisAtivos]);
 
   const materiaisFiltrados = useMemo(() => {
     const termo = buscaMateriais.trim().toLowerCase();
-    if (!termo) return materiais;
+    const porStatus = materiais.filter((material) =>
+      mostrarInativos ? !material.ativo : material.ativo,
+    );
 
-    return materiais.filter((material) =>
+    if (!termo) return porStatus;
+
+    return porStatus.filter((material) =>
       [
         material.nome,
         material.unidade,
@@ -287,7 +295,7 @@ export default function EstoquePage() {
         .toLowerCase()
         .includes(termo),
     );
-  }, [buscaMateriais, materiais]);
+  }, [buscaMateriais, materiais, mostrarInativos]);
 
   const movimentosFiltrados = useMemo(() => {
     const termo = buscaMovimentos.trim().toLowerCase();
@@ -593,6 +601,30 @@ export default function EstoquePage() {
     }
   }
 
+  async function reativarMaterial(material: MaterialEstoque) {
+    if (!window.confirm(`Reativar ${material.nome} na lista de materiais?`)) {
+      return;
+    }
+
+    try {
+      setSalvando(true);
+      const supabase = getSupabase();
+      const { error } = await supabase
+        .from("materiais_estoque")
+        .update({ ativo: true })
+        .eq("id", material.id);
+
+      if (error) throw error;
+
+      await atualizarDados();
+    } catch (error) {
+      console.error("Erro ao reativar material:", error);
+      setErro(getErrorMessage(error));
+    } finally {
+      setSalvando(false);
+    }
+  }
+
   function aplicarRelatorioMesAtual() {
     const hoje = new Date();
     const inicio = new Date(hoje.getFullYear(), hoje.getMonth(), 1);
@@ -741,7 +773,7 @@ export default function EstoquePage() {
         <section className="grid gap-4 md:grid-cols-4">
           <ResumoCard
             titulo="Materiais cadastrados"
-            valor={materiais.length}
+            valor={materiaisAtivos.length}
             detalhe="Itens ativos no estoque"
             icon={Boxes}
           />
@@ -972,7 +1004,7 @@ export default function EstoquePage() {
             <MovimentoBox
               titulo="Registrar entrada"
               icon={ArrowUpCircle}
-              materiais={materiais}
+              materiais={materiaisAtivos}
               materialId={materialEntradaId}
               setMaterialId={setMaterialEntradaId}
               quantidade={quantidadeEntrada}
@@ -991,7 +1023,7 @@ export default function EstoquePage() {
               </div>
               <div className="grid gap-3 md:grid-cols-2">
                 <SelectMaterial
-                  materiais={materiais}
+                  materiais={materiaisAtivos}
                   value={materialSaidaId}
                   onChange={setMaterialSaidaId}
                 />
@@ -1039,21 +1071,56 @@ export default function EstoquePage() {
 
         <section className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
           <div className="mb-4 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-            <h2 className="font-bold text-slate-950">Materiais</h2>
-            <label className="relative block w-full md:w-80">
-              <Search
-                size={16}
-                className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"
-                aria-hidden="true"
-              />
-              <span className="sr-only">Buscar material</span>
-              <input
-                value={buscaMateriais}
-                onChange={(event) => setBuscaMateriais(event.target.value)}
-                placeholder="Buscar por nome, unidade..."
-                className="h-10 w-full rounded-md border border-slate-300 bg-white pl-9 pr-3 text-sm outline-none transition focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100"
-              />
-            </label>
+            <div>
+              <h2 className="font-bold text-slate-950">
+                Materiais {mostrarInativos ? "inativados" : "ativos"}
+              </h2>
+              <p className="text-sm text-slate-500">
+                {mostrarInativos
+                  ? "Itens fora da lista de compra/solicitacao."
+                  : "Itens disponiveis para controle e solicitacao."}
+              </p>
+            </div>
+            <div className="flex w-full flex-col gap-2 md:w-auto md:flex-row">
+              <div className="grid grid-cols-2 rounded-md border border-slate-300 bg-white p-1">
+                <button
+                  type="button"
+                  onClick={() => setMostrarInativos(false)}
+                  className={`h-8 rounded px-3 text-xs font-bold ${
+                    !mostrarInativos
+                      ? "bg-slate-900 text-white"
+                      : "text-slate-600 hover:bg-slate-50"
+                  }`}
+                >
+                  Ativos
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setMostrarInativos(true)}
+                  className={`h-8 rounded px-3 text-xs font-bold ${
+                    mostrarInativos
+                      ? "bg-slate-900 text-white"
+                      : "text-slate-600 hover:bg-slate-50"
+                  }`}
+                >
+                  Inativados
+                </button>
+              </div>
+              <label className="relative block w-full md:w-80">
+                <Search
+                  size={16}
+                  className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"
+                  aria-hidden="true"
+                />
+                <span className="sr-only">Buscar material</span>
+                <input
+                  value={buscaMateriais}
+                  onChange={(event) => setBuscaMateriais(event.target.value)}
+                  placeholder="Buscar por nome, unidade..."
+                  className="h-10 w-full rounded-md border border-slate-300 bg-white pl-9 pr-3 text-sm outline-none transition focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100"
+                />
+              </label>
+            </div>
           </div>
           <div className="overflow-x-auto">
             <table className="w-full min-w-[860px] text-left text-sm">
@@ -1110,15 +1177,26 @@ export default function EstoquePage() {
                               <Pencil size={14} aria-hidden="true" />
                               Editar
                             </button>
-                            <button
-                              type="button"
-                              onClick={() => inativarMaterial(material)}
-                              disabled={salvando}
-                              className="inline-flex h-9 items-center gap-2 rounded-md border border-red-200 bg-red-50 px-3 text-xs font-bold text-red-700 transition hover:bg-red-100 disabled:opacity-60"
-                            >
-                              <Ban size={14} aria-hidden="true" />
-                              Inativar
-                            </button>
+                            {material.ativo ? (
+                              <button
+                                type="button"
+                                onClick={() => inativarMaterial(material)}
+                                disabled={salvando}
+                                className="inline-flex h-9 items-center gap-2 rounded-md border border-red-200 bg-red-50 px-3 text-xs font-bold text-red-700 transition hover:bg-red-100 disabled:opacity-60"
+                              >
+                                <Ban size={14} aria-hidden="true" />
+                                Inativar
+                              </button>
+                            ) : (
+                              <button
+                                type="button"
+                                onClick={() => reativarMaterial(material)}
+                                disabled={salvando}
+                                className="inline-flex h-9 items-center gap-2 rounded-md border border-emerald-200 bg-emerald-50 px-3 text-xs font-bold text-emerald-700 transition hover:bg-emerald-100 disabled:opacity-60"
+                              >
+                                Reativar
+                              </button>
+                            )}
                           </div>
                         ) : (
                           <span className="text-xs text-slate-400">
@@ -1195,7 +1273,7 @@ export default function EstoquePage() {
                 className="h-10 w-full rounded-md border border-slate-300 px-3 text-sm outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100"
               >
                 <option value="">Todos os itens</option>
-                {materiais.map((material) => (
+                {materiaisAtivos.map((material) => (
                   <option key={material.id} value={material.id}>
                     {material.nome}
                   </option>
@@ -1447,7 +1525,7 @@ function SelectMaterial({
         className="h-11 w-full rounded-md border border-slate-300 px-3 text-sm outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100"
       >
         <option value="">Escolha um material</option>
-        {materiais.map((material) => (
+        {materiais.filter((material) => material.ativo).map((material) => (
           <option key={material.id} value={material.id}>
             {material.nome} - Quantidade: {numero(material.quantidade_atual)}{" "}
             {material.unidade}
@@ -1493,7 +1571,7 @@ function MovimentoBox({
       </div>
       <div className="grid gap-3 md:grid-cols-2">
         <SelectMaterial
-          materiais={materiais}
+          materiais={materiais.filter((material) => material.ativo)}
           value={materialId}
           onChange={setMaterialId}
         />
