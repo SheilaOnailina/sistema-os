@@ -8,9 +8,11 @@ import {
   ArrowDownCircle,
   ArrowLeft,
   ArrowUpCircle,
+  Ban,
   Boxes,
   CalendarClock,
   CheckCircle2,
+  FileDown,
   Pencil,
   Loader2,
   PlusCircle,
@@ -94,6 +96,25 @@ function numero(value: unknown) {
   return Number(value ?? 0);
 }
 
+function inicioDaSemanaAtualDate() {
+  const hoje = new Date();
+  const diaDaSemana = hoje.getDay();
+  const diasDesdeSegunda = diaDaSemana === 0 ? 6 : diaDaSemana - 1;
+  const inicio = new Date(hoje);
+  inicio.setDate(hoje.getDate() - diasDesdeSegunda);
+  inicio.setHours(0, 0, 0, 0);
+  return inicio;
+}
+
+function toInputDate(value: Date) {
+  return value.toISOString().slice(0, 10);
+}
+
+function fimDoDia(value: string) {
+  const data = new Date(`${value}T23:59:59`);
+  return data;
+}
+
 async function carregarEstoque() {
   const supabase = getSupabase();
   const [
@@ -113,7 +134,7 @@ async function carregarEstoque() {
         .from("movimentacoes_estoque")
         .select("*")
         .order("criado_em", { ascending: false })
-        .limit(20),
+        .limit(1000),
       supabase
         .from("colaboradores")
         .select("*")
@@ -199,6 +220,11 @@ export default function EstoquePage() {
   const [motivoSaida, setMotivoSaida] = useState("");
   const [buscaMateriais, setBuscaMateriais] = useState("");
   const [buscaMovimentos, setBuscaMovimentos] = useState("");
+  const [filtroInicio, setFiltroInicio] = useState(() =>
+    toInputDate(inicioDaSemanaAtualDate()),
+  );
+  const [filtroFim, setFiltroFim] = useState(() => toInputDate(new Date()));
+  const [filtroMaterialId, setFiltroMaterialId] = useState("");
   const [materialEmEdicao, setMaterialEmEdicao] =
     useState<MaterialEstoque | null>(null);
   const [editNome, setEditNome] = useState("");
@@ -240,7 +266,7 @@ export default function EstoquePage() {
       const saldoBaixo =
         numero(material.quantidade_atual) <= numero(material.estoque_minimo);
       const dias = diasAte(material.proximo_recebimento);
-      const recebimentoProximo = dias !== null && dias <= 7;
+      const recebimentoProximo = dias !== null && dias <= 30;
       return saldoBaixo || recebimentoProximo;
     });
   }, [materiais]);
@@ -265,10 +291,28 @@ export default function EstoquePage() {
 
   const movimentosFiltrados = useMemo(() => {
     const termo = buscaMovimentos.trim().toLowerCase();
-    if (!termo) return movimentos;
 
-    return movimentos.filter((movimento) =>
-      [
+    return movimentos.filter((movimento) => {
+      const dataMovimento = movimento.criado_em
+        ? new Date(movimento.criado_em)
+        : null;
+
+      if (filtroInicio && dataMovimento) {
+        const inicio = new Date(`${filtroInicio}T00:00:00`);
+        if (dataMovimento < inicio) return false;
+      }
+
+      if (filtroFim && dataMovimento) {
+        if (dataMovimento > fimDoDia(filtroFim)) return false;
+      }
+
+      if (filtroMaterialId && movimento.material_id !== filtroMaterialId) {
+        return false;
+      }
+
+      if (!termo) return true;
+
+      return [
         nomesMateriais[movimento.material_id],
         movimento.tipo,
         movimento.motivo,
@@ -279,9 +323,17 @@ export default function EstoquePage() {
       ]
         .join(" ")
         .toLowerCase()
-        .includes(termo),
-    );
-  }, [buscaMovimentos, movimentos, nomesColaboradores, nomesMateriais]);
+        .includes(termo);
+    });
+  }, [
+    buscaMovimentos,
+    filtroFim,
+    filtroInicio,
+    filtroMaterialId,
+    movimentos,
+    nomesColaboradores,
+    nomesMateriais,
+  ]);
 
   const solicitacoesPendentes = useMemo(() => {
     return solicitacoes.filter(
@@ -511,6 +563,98 @@ export default function EstoquePage() {
     } finally {
       setSalvando(false);
     }
+  }
+
+  async function inativarMaterial(material: MaterialEstoque) {
+    if (
+      !window.confirm(
+        `Inativar ${material.nome}? Ele nao aparecera mais nas listas de materiais ativos.`,
+      )
+    ) {
+      return;
+    }
+
+    try {
+      setSalvando(true);
+      const supabase = getSupabase();
+      const { error } = await supabase
+        .from("materiais_estoque")
+        .update({ ativo: false })
+        .eq("id", material.id);
+
+      if (error) throw error;
+
+      await atualizarDados();
+    } catch (error) {
+      console.error("Erro ao inativar material:", error);
+      setErro(getErrorMessage(error));
+    } finally {
+      setSalvando(false);
+    }
+  }
+
+  function aplicarRelatorioMesAtual() {
+    const hoje = new Date();
+    const inicio = new Date(hoje.getFullYear(), hoje.getMonth(), 1);
+    setFiltroInicio(toInputDate(inicio));
+    setFiltroFim(toInputDate(hoje));
+  }
+
+  function limparFiltrosMovimentacoes() {
+    setBuscaMovimentos("");
+    setFiltroMaterialId("");
+    setFiltroInicio(toInputDate(inicioDaSemanaAtualDate()));
+    setFiltroFim(toInputDate(new Date()));
+  }
+
+  function exportarMovimentacoesCsv() {
+    const linhas = [
+      [
+        "data",
+        "material",
+        "tipo",
+        "quantidade",
+        "colaborador",
+        "motivo",
+        "observacao",
+      ],
+      ...movimentosFiltrados.map((movimento) => [
+        movimento.criado_em
+          ? new Intl.DateTimeFormat("pt-BR", {
+              dateStyle: "short",
+              timeStyle: "short",
+            }).format(new Date(movimento.criado_em))
+          : "",
+        nomesMateriais[movimento.material_id] || "",
+        movimento.tipo || "",
+        String(numero(movimento.quantidade)),
+        movimento.colaborador_id
+          ? nomesColaboradores[movimento.colaborador_id] || ""
+          : "",
+        movimento.motivo || "",
+        movimento.observacao || "",
+      ]),
+    ];
+
+    const csv = linhas
+      .map((linha) =>
+        linha
+          .map((campo) => `"${String(campo).replace(/"/g, '""')}"`)
+          .join(";"),
+      )
+      .join("\n");
+
+    const blob = new Blob([`\uFEFF${csv}`], {
+      type: "text/csv;charset=utf-8;",
+    });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `movimentacoes-estoque-${new Date()
+      .toISOString()
+      .slice(0, 10)}.csv`;
+    link.click();
+    URL.revokeObjectURL(url);
   }
 
   async function responderSolicitacao(
@@ -812,7 +956,7 @@ export default function EstoquePage() {
                     </p>
                     {material.proximo_recebimento && (
                       <p className="text-sm text-amber-800">
-                        Proximo recebimento:{" "}
+                        Proximo recebimento em ate 30 dias:{" "}
                         {formatDate(material.proximo_recebimento)}
                       </p>
                     )}
@@ -957,14 +1101,25 @@ export default function EstoquePage() {
                       </td>
                       <td className="px-3 py-3">
                         {podeConfigurar ? (
-                          <button
-                            type="button"
-                            onClick={() => abrirEdicaoMaterial(material)}
-                            className="inline-flex h-9 items-center gap-2 rounded-md border border-slate-300 px-3 text-xs font-bold text-slate-700 transition hover:bg-slate-50"
-                          >
-                            <Pencil size={14} aria-hidden="true" />
-                            Editar
-                          </button>
+                          <div className="flex flex-wrap gap-2">
+                            <button
+                              type="button"
+                              onClick={() => abrirEdicaoMaterial(material)}
+                              className="inline-flex h-9 items-center gap-2 rounded-md border border-slate-300 px-3 text-xs font-bold text-slate-700 transition hover:bg-slate-50"
+                            >
+                              <Pencil size={14} aria-hidden="true" />
+                              Editar
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => inativarMaterial(material)}
+                              disabled={salvando}
+                              className="inline-flex h-9 items-center gap-2 rounded-md border border-red-200 bg-red-50 px-3 text-xs font-bold text-red-700 transition hover:bg-red-100 disabled:opacity-60"
+                            >
+                              <Ban size={14} aria-hidden="true" />
+                              Inativar
+                            </button>
+                          </div>
                         ) : (
                           <span className="text-xs text-slate-400">
                             Somente gestor
@@ -981,21 +1136,97 @@ export default function EstoquePage() {
 
         <section className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
           <div className="mb-4 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-            <h2 className="font-bold text-slate-950">Ultimas movimentacoes</h2>
-            <label className="relative block w-full md:w-80">
+            <div>
+              <h2 className="font-bold text-slate-950">Movimentacoes</h2>
+              <p className="text-sm text-slate-500">
+                Por padrao, exibindo somente a semana atual.
+              </p>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={aplicarRelatorioMesAtual}
+                className="inline-flex h-10 items-center justify-center rounded-md border border-slate-300 px-3 text-xs font-bold text-slate-700 transition hover:bg-slate-50"
+              >
+                Relatorio do mes
+              </button>
+              <button
+                type="button"
+                onClick={exportarMovimentacoesCsv}
+                disabled={movimentosFiltrados.length === 0}
+                className="inline-flex h-10 items-center justify-center gap-2 rounded-md bg-slate-900 px-3 text-xs font-bold text-white transition hover:bg-slate-800 disabled:opacity-60"
+              >
+                <FileDown size={14} aria-hidden="true" />
+                Exportar planilha
+              </button>
+            </div>
+          </div>
+
+          <div className="mb-4 grid gap-3 md:grid-cols-5">
+            <label className="block">
+              <span className="mb-1 block text-xs font-bold uppercase text-slate-500">
+                Data inicial
+              </span>
+              <input
+                type="date"
+                value={filtroInicio}
+                onChange={(event) => setFiltroInicio(event.target.value)}
+                className="h-10 w-full rounded-md border border-slate-300 px-3 text-sm outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100"
+              />
+            </label>
+            <label className="block">
+              <span className="mb-1 block text-xs font-bold uppercase text-slate-500">
+                Data final
+              </span>
+              <input
+                type="date"
+                value={filtroFim}
+                onChange={(event) => setFiltroFim(event.target.value)}
+                className="h-10 w-full rounded-md border border-slate-300 px-3 text-sm outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100"
+              />
+            </label>
+            <label className="block">
+              <span className="mb-1 block text-xs font-bold uppercase text-slate-500">
+                Item
+              </span>
+              <select
+                value={filtroMaterialId}
+                onChange={(event) => setFiltroMaterialId(event.target.value)}
+                className="h-10 w-full rounded-md border border-slate-300 px-3 text-sm outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100"
+              >
+                <option value="">Todos os itens</option>
+                {materiais.map((material) => (
+                  <option key={material.id} value={material.id}>
+                    {material.nome}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="relative block">
+              <span className="mb-1 block text-xs font-bold uppercase text-slate-500">
+                Buscar
+              </span>
               <Search
                 size={16}
-                className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"
+                className="absolute left-3 top-[34px] text-slate-400"
                 aria-hidden="true"
               />
-              <span className="sr-only">Buscar movimentacao</span>
               <input
                 value={buscaMovimentos}
                 onChange={(event) => setBuscaMovimentos(event.target.value)}
-                placeholder="Buscar por material, motivo..."
+                placeholder="Material, motivo..."
                 className="h-10 w-full rounded-md border border-slate-300 bg-white pl-9 pr-3 text-sm outline-none transition focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100"
               />
             </label>
+            <div className="flex items-end">
+              <button
+                type="button"
+                onClick={limparFiltrosMovimentacoes}
+                className="h-10 w-full rounded-md border border-slate-300 px-3 text-xs font-bold text-slate-700 transition hover:bg-slate-50"
+              >
+                Limpar filtros
+              </button>
+            </div>
           </div>
           <div className="space-y-2">
             {movimentosFiltrados.length === 0 ? (

@@ -170,6 +170,7 @@ async function listarSolicitacoesSemana(colaboradorId: string) {
     .select("*")
     .eq("colaborador_id", colaboradorId)
     .gte("criado_em", inicioDaSemanaAtualIso())
+    .neq("status", "RECUSADA")
     .order("criado_em", { ascending: false });
 
   if (error) {
@@ -1170,8 +1171,7 @@ export default function PainelTecnicoIndividualPage() {
                   <option value="">Escolha o material</option>
                   {materiaisEstoque.map((material) => (
                     <option key={material.id} value={material.id}>
-                      {material.nome} - saldo:{" "}
-                      {Number(material.quantidade_atual ?? 0)} {material.unidade}
+                      {material.nome} ({material.unidade})
                     </option>
                   ))}
                 </select>
