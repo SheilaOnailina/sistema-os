@@ -92,11 +92,11 @@ export default function AlterarSenhaPage() {
             <LockKeyhole size={22} aria-hidden="true" />
           </div>
           <h1 className="text-2xl font-bold text-slate-950">
-            Alterar senha inicial
+            Alterar senha
           </h1>
           <p className="mt-1 text-sm text-slate-500">
             {usuario
-              ? `${usuario.nome}, crie uma senha propria para continuar.`
+              ? `${usuario.nome}, atualize sua senha de acesso.`
               : "Carregando usuario..."}
           </p>
         </div>
@@ -137,8 +137,11 @@ export default function AlterarSenhaPage() {
         </form>
 
         <div className="mt-4 text-center text-sm">
-          <Link href="/login" className="font-semibold text-blue-700 hover:underline">
-            Voltar para o login
+          <Link
+            href={usuario?.perfil === "GESTOR" ? "/dashboard" : "/tecnico"}
+            className="font-semibold text-blue-700 hover:underline"
+          >
+            Voltar para o painel
           </Link>
         </div>
       </section>

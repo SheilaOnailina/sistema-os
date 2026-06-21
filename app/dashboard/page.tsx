@@ -8,6 +8,7 @@ import {
   CheckCircle2,
   ClipboardList,
   Hammer,
+  KeyRound,
   LogOut,
   Package,
   Pencil,
@@ -486,15 +487,14 @@ export default function DashboardPage() {
 
     const linkSistema =
       typeof window === "undefined" ? "" : `${window.location.origin}/login`;
+    const prioridade = normalizePrioridade(ordem.prioridade);
+    const temPrioridade = prioridade !== "NORMAL";
     const mensagem = [
       `Ola, ${colaborador.nome}.`,
-      "Uma nova demanda foi vinculada ao seu painel no Sistema OS.",
+      "Voce tem uma demanda no Sistema OS.",
+      temPrioridade ? `*PRIORIDADE: ${prioridadeLabels[prioridade] || "Prioridade"}*` : "",
       `OS #${ordem.numero_os}`,
       `Local: ${ordem.local}`,
-      `Solicitante: ${ordem.solicitante || "-"}`,
-      normalizePrioridade(ordem.prioridade) === "NORMAL"
-        ? ""
-        : `Prioridade: ${prioridadeLabels[normalizePrioridade(ordem.prioridade)]}`,
       `Descricao: ${ordem.descricao}`,
       linkSistema ? `Acesse: ${linkSistema}` : "",
     ]
@@ -617,6 +617,13 @@ export default function DashboardPage() {
               className="inline-flex h-10 items-center justify-center rounded-md border border-slate-300 px-4 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
             >
               Colaboradores
+            </Link>
+            <Link
+              href="/alterar-senha"
+              className="inline-flex h-10 items-center justify-center gap-2 rounded-md border border-slate-300 px-4 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
+            >
+              <KeyRound size={16} aria-hidden="true" />
+              Minha senha
             </Link>
             <button
               type="button"

@@ -1,10 +1,12 @@
 "use client";
 
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import {
   AlertCircle,
   ClipboardList,
+  KeyRound,
   LogOut,
   PlusCircle,
   RefreshCw,
@@ -322,13 +324,22 @@ export default function PainelTecnicoIndividualPage() {
                 Minhas Ordens de Servico
               </p>
             </div>
-            <button
-              onClick={sair}
-              className="rounded-lg bg-white/10 p-2 text-slate-200 transition hover:bg-white/20"
-              aria-label="Sair"
-            >
-              <LogOut size={18} aria-hidden="true" />
-            </button>
+            <div className="flex gap-2">
+              <Link
+                href="/alterar-senha"
+                className="rounded-lg bg-white/10 p-2 text-slate-200 transition hover:bg-white/20"
+                aria-label="Alterar senha"
+              >
+                <KeyRound size={18} aria-hidden="true" />
+              </Link>
+              <button
+                onClick={sair}
+                className="rounded-lg bg-white/10 p-2 text-slate-200 transition hover:bg-white/20"
+                aria-label="Sair"
+              >
+                <LogOut size={18} aria-hidden="true" />
+              </button>
+            </div>
           </div>
 
           <div className="mt-5 grid grid-cols-3 gap-2">
