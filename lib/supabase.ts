@@ -19,7 +19,7 @@ export type OrdemServico = {
   numero_os: string | number;
   local: string;
   descricao: string;
-  status: "ABERTA" | "EM_EXECUCAO" | "CONCLUIDA" | string;
+  status: "ABERTA" | "EM_EXECUCAO" | "CONCLUIDA" | "INCOMPLETA" | string;
   prioridade?: PrioridadeOS | string | null;
   solicitante?: string | null;
   colaborador_id?: string | null;

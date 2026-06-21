@@ -13,12 +13,13 @@ import {
 } from "lucide-react";
 import {
   getSupabase,
-  type Colaborador,
+type Colaborador,
   type OrdemServico,
   type PrioridadeOS,
 } from "@/lib/supabase";
 
 const sessionKey = "sistema-os-colaborador";
+type ResultadoServico = "REALIZADO" | "INCOMPLETO" | "";
 
 function getErrorMessage(error: unknown) {
   return error instanceof Error ? error.message : "Falha ao conectar ao banco.";
@@ -91,8 +92,10 @@ export default function PainelTecnicoIndividualPage() {
   const [usuario] = useState<Colaborador | null>(getSessaoInicial);
   const [listaOS, setListaOS] = useState<OrdemServico[]>([]);
   const [osSelecionada, setOsSelecionada] = useState<OrdemServico | null>(null);
-  const [relato, setRelato] = useState("");
   const [insumos, setInsumos] = useState("");
+  const [resultadoServico, setResultadoServico] = useState<ResultadoServico>("");
+  const [usouMaterial, setUsouMaterial] = useState<"SIM" | "NAO" | "">("");
+  const [pendencia, setPendencia] = useState("");
   const [registrandoSolicitada, setRegistrandoSolicitada] = useState(false);
   const [salvandoSolicitada, setSalvandoSolicitada] = useState(false);
   const [solicitanteDemanda, setSolicitanteDemanda] = useState("");
@@ -104,7 +107,9 @@ export default function PainelTecnicoIndividualPage() {
 
   function voltarParaLista() {
     setOsSelecionada(null);
-    setRelato("");
+    setResultadoServico("");
+    setUsouMaterial("");
+    setPendencia("");
     setInsumos("");
   }
 
@@ -191,19 +196,40 @@ export default function PainelTecnicoIndividualPage() {
   }
 
   async function concluirDemanda(id: string) {
-    if (!relato.trim()) {
-      alert("Por favor, informe o que foi feito no relato tecnico.");
+    if (!resultadoServico) {
+      setErro("Marque se o servico foi realizado ou se ficou incompleto.");
       return;
     }
+
+    if (resultadoServico === "REALIZADO" && !usouMaterial) {
+      setErro("Informe se houve uso de material.");
+      return;
+    }
+
+    if (resultadoServico === "REALIZADO" && usouMaterial === "SIM" && !insumos.trim()) {
+      setErro("Informe qual material foi utilizado.");
+      return;
+    }
+
+    if (resultadoServico === "INCOMPLETO" && !pendencia.trim()) {
+      setErro("Informe o que falta para concluir o servico.");
+      return;
+    }
+
+    const servicoRealizado = resultadoServico === "REALIZADO";
+    const relatoTecnico = servicoRealizado
+      ? "Servico realizado."
+      : `Servico incompleto. Falta: ${pendencia.trim()}`;
 
     const supabase = getSupabase();
     const { error } = await supabase
       .from("ordens_servico")
       .update({
-        status: "CONCLUIDA",
+        status: servicoRealizado ? "CONCLUIDA" : "INCOMPLETA",
         data_conclusao: new Date().toISOString(),
-        relato_tecnico: relato,
-        insumos_utilizados: insumos,
+        relato_tecnico: relatoTecnico,
+        insumos_utilizados:
+          servicoRealizado && usouMaterial === "SIM" ? insumos.trim() : "",
       })
       .eq("id", id)
       .eq("colaborador_id", usuario?.id ?? "");
@@ -213,9 +239,15 @@ export default function PainelTecnicoIndividualPage() {
       return;
     }
 
-    alert("Ordem de Servico concluida com sucesso!");
+    alert(
+      servicoRealizado
+        ? "Ordem de Servico concluida com sucesso!"
+        : "Ordem de Servico marcada como incompleta.",
+    );
     setOsSelecionada(null);
-    setRelato("");
+    setResultadoServico("");
+    setUsouMaterial("");
+    setPendencia("");
     setInsumos("");
     await buscarOrdens();
   }
@@ -366,8 +398,11 @@ export default function PainelTecnicoIndividualPage() {
                   key={os.id}
                   onClick={() => {
                     setOsSelecionada(os);
-                    setRelato("");
+                    setResultadoServico("");
+                    setUsouMaterial("");
+                    setPendencia("");
                     setInsumos("");
+                    setErro(null);
                   }}
                   className="w-full cursor-pointer rounded-2xl border border-slate-200 bg-white p-4 text-left shadow-sm transition hover:border-blue-400"
                 >
@@ -455,45 +490,106 @@ export default function PainelTecnicoIndividualPage() {
               </div>
 
               {osSelecionada.status === "ABERTA" && (
-                <p className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800">
-                  Esta OS ainda nao foi iniciada. Voce pode voltar para escolher
-                  outra ou iniciar esta atividade agora.
-                </p>
+                <AvisoOperacional
+                  titulo="OS aguardando inicio"
+                  texto="Confira as informacoes e inicie quando for executar esta demanda."
+                  tom="amber"
+                />
               )}
 
               {osSelecionada.status === "AGUARDANDO_VALIDACAO" && (
-                <p className="rounded-xl border border-violet-200 bg-violet-50 p-3 text-xs text-violet-800">
-                  Esta demanda foi enviada ao gestor e ainda esta aguardando
-                  validacao. Quando for aprovada, ela aparecera como OS aberta.
-                </p>
+                <AvisoOperacional
+                  titulo="Aguardando validacao"
+                  texto="Esta solicitacao foi enviada ao gestor e ainda nao virou uma OS ativa."
+                  tom="violet"
+                />
               )}
 
               {osSelecionada.status === "EM_EXECUCAO" && (
-                <div className="space-y-3 pt-2">
-                  <label className="block">
-                    <span className="mb-1 block text-xs font-bold uppercase text-slate-500">
-                      O que foi feito? *
-                    </span>
-                    <textarea
-                      value={relato}
-                      onChange={(event) => setRelato(event.target.value)}
-                      rows={3}
-                      className="w-full rounded-xl border border-slate-200 p-3 text-sm outline-none focus:ring-2 focus:ring-blue-500"
-                      placeholder="Relato tecnico da atividade..."
-                    />
-                  </label>
-                  <label className="block">
-                    <span className="mb-1 block text-xs font-bold uppercase text-slate-500">
-                      Insumos/Materiais utilizados
-                    </span>
-                    <input
-                      value={insumos}
-                      onChange={(event) => setInsumos(event.target.value)}
-                      type="text"
-                      className="w-full rounded-xl border border-slate-200 p-3 text-sm outline-none focus:ring-2 focus:ring-blue-500"
-                      placeholder="Ex: Tomada 20A, 50cm de fio"
-                    />
-                  </label>
+                <div className="space-y-4 pt-2">
+                  <div>
+                    <p className="mb-2 text-xs font-bold uppercase text-slate-500">
+                      Resultado do servico *
+                    </p>
+                    <div className="grid gap-2 sm:grid-cols-2">
+                      <OpcaoMarcacao
+                        label="Realizado"
+                        checked={resultadoServico === "REALIZADO"}
+                        onClick={() => {
+                          setResultadoServico("REALIZADO");
+                          setPendencia("");
+                          setErro(null);
+                        }}
+                      />
+                      <OpcaoMarcacao
+                        label="Incompleto"
+                        checked={resultadoServico === "INCOMPLETO"}
+                        onClick={() => {
+                          setResultadoServico("INCOMPLETO");
+                          setUsouMaterial("");
+                          setInsumos("");
+                          setErro(null);
+                        }}
+                      />
+                    </div>
+                  </div>
+
+                  {resultadoServico === "REALIZADO" && (
+                    <div className="rounded-2xl border border-slate-200 bg-white p-3">
+                      <p className="mb-2 text-xs font-bold uppercase text-slate-500">
+                        Usou material?
+                      </p>
+                      <div className="grid gap-2 sm:grid-cols-2">
+                        <OpcaoMarcacao
+                          label="Sim"
+                          checked={usouMaterial === "SIM"}
+                          onClick={() => {
+                            setUsouMaterial("SIM");
+                            setErro(null);
+                          }}
+                        />
+                        <OpcaoMarcacao
+                          label="Nao"
+                          checked={usouMaterial === "NAO"}
+                          onClick={() => {
+                            setUsouMaterial("NAO");
+                            setInsumos("");
+                            setErro(null);
+                          }}
+                        />
+                      </div>
+
+                      {usouMaterial === "SIM" && (
+                        <label className="mt-3 block">
+                          <span className="mb-1 block text-xs font-bold uppercase text-slate-500">
+                            Qual material foi utilizado? *
+                          </span>
+                          <textarea
+                            value={insumos}
+                            onChange={(event) => setInsumos(event.target.value)}
+                            rows={3}
+                            className="w-full rounded-xl border border-slate-200 p-3 text-sm outline-none focus:ring-2 focus:ring-blue-500"
+                            placeholder="Ex: tomada 20A, fita isolante, 2m de cabo..."
+                          />
+                        </label>
+                      )}
+                    </div>
+                  )}
+
+                  {resultadoServico === "INCOMPLETO" && (
+                    <label className="block rounded-2xl border border-slate-200 bg-white p-3">
+                      <span className="mb-1 block text-xs font-bold uppercase text-slate-500">
+                        O que falta para concluir? *
+                      </span>
+                      <textarea
+                        value={pendencia}
+                        onChange={(event) => setPendencia(event.target.value)}
+                        rows={3}
+                        className="w-full rounded-xl border border-slate-200 p-3 text-sm outline-none focus:ring-2 focus:ring-blue-500"
+                        placeholder="Ex: falta peca, depende de autorizacao, precisa retornar ao local..."
+                      />
+                    </label>
+                  )}
                 </div>
               )}
             </div>
@@ -524,7 +620,7 @@ export default function PainelTecnicoIndividualPage() {
                     onClick={() => concluirDemanda(osSelecionada.id)}
                     className="w-full rounded-xl bg-blue-600 py-3.5 text-sm font-bold uppercase tracking-wide text-white shadow-lg transition hover:bg-blue-700"
                   >
-                    Concluir demanda
+                    Salvar resultado
                   </button>
                 )}
               </div>
@@ -630,5 +726,59 @@ function Indicador({ label, value }: { label: string; value: number }) {
       <p className="text-xs font-semibold text-slate-300">{label}</p>
       <p className="mt-1 font-mono text-2xl font-bold text-white">{value}</p>
     </div>
+  );
+}
+
+function AvisoOperacional({
+  titulo,
+  texto,
+  tom,
+}: {
+  titulo: string;
+  texto: string;
+  tom: "amber" | "violet";
+}) {
+  const classes =
+    tom === "amber"
+      ? "border-amber-200 bg-amber-50 text-amber-900"
+      : "border-violet-200 bg-violet-50 text-violet-900";
+
+  return (
+    <div className={`rounded-2xl border p-3 ${classes}`}>
+      <p className="text-xs font-bold uppercase tracking-wide">{titulo}</p>
+      <p className="mt-1 text-sm leading-relaxed">{texto}</p>
+    </div>
+  );
+}
+
+function OpcaoMarcacao({
+  label,
+  checked,
+  onClick,
+}: {
+  label: string;
+  checked: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={`flex items-center gap-2 rounded-xl border px-3 py-3 text-left text-sm font-bold transition ${
+        checked
+          ? "border-blue-500 bg-blue-50 text-blue-800 ring-2 ring-blue-100"
+          : "border-slate-200 bg-white text-slate-700 hover:border-blue-300"
+      }`}
+    >
+      <span
+        className={`flex h-5 w-5 items-center justify-center rounded-full border ${
+          checked ? "border-blue-600 bg-blue-600" : "border-slate-300 bg-white"
+        }`}
+        aria-hidden="true"
+      >
+        {checked && <span className="h-2 w-2 rounded-full bg-white" />}
+      </span>
+      {label}
+    </button>
   );
 }

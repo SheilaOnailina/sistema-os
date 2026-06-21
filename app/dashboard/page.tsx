@@ -29,6 +29,7 @@ type StatusKey =
   | "ABERTA"
   | "EM_EXECUCAO"
   | "CONCLUIDA"
+  | "INCOMPLETA"
   | "AGUARDANDO_VALIDACAO";
 type FiltroDashboard = StatusKey | "INSUMOS" | null;
 const sessionKey = "sistema-os-colaborador";
@@ -48,6 +49,7 @@ const statusLabels: Record<StatusKey, string> = {
   ABERTA: "Abertas",
   EM_EXECUCAO: "Em execucao",
   CONCLUIDA: "Concluidas",
+  INCOMPLETA: "Incompletas",
   AGUARDANDO_VALIDACAO: "Aguardando validacao",
 };
 
@@ -55,6 +57,7 @@ const statusStyles: Record<StatusKey, string> = {
   ABERTA: "bg-amber-100 text-amber-800 border-amber-200",
   EM_EXECUCAO: "bg-blue-100 text-blue-800 border-blue-200",
   CONCLUIDA: "bg-emerald-100 text-emerald-800 border-emerald-200",
+  INCOMPLETA: "bg-rose-100 text-rose-800 border-rose-200",
   AGUARDANDO_VALIDACAO: "bg-violet-100 text-violet-800 border-violet-200",
 };
 
@@ -125,6 +128,7 @@ function normalizeStatus(status: string): StatusKey | "OUTRO" {
     status === "ABERTA" ||
     status === "EM_EXECUCAO" ||
     status === "CONCLUIDA" ||
+    status === "INCOMPLETA" ||
     status === "AGUARDANDO_VALIDACAO"
   ) {
     return status;
@@ -254,6 +258,9 @@ export default function DashboardPage() {
     const concluidas = ordens.filter(
       (ordem) => ordem.status === "CONCLUIDA",
     ).length;
+    const incompletas = ordens.filter(
+      (ordem) => ordem.status === "INCOMPLETA",
+    ).length;
     const aguardandoValidacao = ordens.filter(
       (ordem) => ordem.status === "AGUARDANDO_VALIDACAO",
     ).length;
@@ -266,6 +273,7 @@ export default function DashboardPage() {
       abertas,
       emExecucao,
       concluidas,
+      incompletas,
       aguardandoValidacao,
       comInsumos,
     };
@@ -287,6 +295,9 @@ export default function DashboardPage() {
         const concluidas = ordensDoColaborador.filter(
           (ordem) => ordem.status === "CONCLUIDA",
         ).length;
+        const incompletas = ordensDoColaborador.filter(
+          (ordem) => ordem.status === "INCOMPLETA",
+        ).length;
         const aguardandoValidacao = ordensDoColaborador.filter(
           (ordem) => ordem.status === "AGUARDANDO_VALIDACAO",
         ).length;
@@ -298,6 +309,7 @@ export default function DashboardPage() {
           abertas,
           emExecucao,
           concluidas,
+          incompletas,
           aguardandoValidacao,
           cargaAtual: abertas + emExecucao,
           total: ordensDoColaborador.length,
@@ -354,11 +366,13 @@ export default function DashboardPage() {
           ? "Em execucao"
           : filtroDashboard === "CONCLUIDA"
             ? "Concluidas"
-            : filtroDashboard === "AGUARDANDO_VALIDACAO"
-              ? "Aguardando validacao"
-              : filtroDashboard === "INSUMOS"
-                ? "Com insumos"
-                : "Todas as ordens";
+            : filtroDashboard === "INCOMPLETA"
+              ? "Incompletas"
+              : filtroDashboard === "AGUARDANDO_VALIDACAO"
+                ? "Aguardando validacao"
+                : filtroDashboard === "INSUMOS"
+                  ? "Com insumos"
+                  : "Todas as ordens";
     const colaboradorTexto = filtroColaboradorId
       ? nomesColaboradores[filtroColaboradorId] || "Tecnico selecionado"
       : "";
@@ -720,6 +734,7 @@ export default function DashboardPage() {
                   "ABERTA",
                   "EM_EXECUCAO",
                   "CONCLUIDA",
+                  "INCOMPLETA",
                   "AGUARDANDO_VALIDACAO",
                 ] as StatusKey[]
               ).map(
@@ -731,7 +746,9 @@ export default function DashboardPage() {
                         ? indicadores.emExecucao
                         : status === "CONCLUIDA"
                           ? indicadores.concluidas
-                          : indicadores.aguardandoValidacao;
+                          : status === "INCOMPLETA"
+                            ? indicadores.incompletas
+                            : indicadores.aguardandoValidacao;
                   const largura = `${Math.max((valor / maiorIndicador) * 100, valor ? 10 : 0)}%`;
 
                   return (

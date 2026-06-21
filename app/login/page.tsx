@@ -54,11 +54,6 @@ export default function LoginPage() {
 
       localStorage.setItem(sessionKey, JSON.stringify(usuario));
 
-      if (usuario.precisa_trocar_senha) {
-        router.push("/alterar-senha");
-        return;
-      }
-
       router.push(usuario.perfil === "GESTOR" ? "/dashboard" : "/tecnico");
     } catch (error) {
       console.error("Erro no login:", error);
@@ -148,11 +143,6 @@ export default function LoginPage() {
             {carregando ? "Entrando..." : "Entrar"}
           </button>
         </form>
-
-        <div className="mt-5 rounded-md bg-slate-50 p-3 text-xs text-slate-500">
-          Primeiro acesso: use o CPF como senha inicial. Depois o sistema pedira
-          uma nova senha.
-        </div>
 
         <div className="mt-4 text-center text-sm">
           <Link href="/" className="font-semibold text-blue-700 hover:underline">

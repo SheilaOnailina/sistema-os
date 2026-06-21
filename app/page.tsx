@@ -31,11 +31,6 @@ export default function Home() {
       return;
     }
 
-    if (usuario.precisa_trocar_senha) {
-      router.replace("/alterar-senha");
-      return;
-    }
-
     router.replace(usuario.perfil === "GESTOR" ? "/dashboard" : "/tecnico");
   }, [router]);
 
