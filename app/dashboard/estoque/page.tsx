@@ -182,6 +182,8 @@ export default function EstoquePage() {
 
   const [nome, setNome] = useState("");
   const [unidade, setUnidade] = useState("Unidade");
+  const [unidadePersonalizada, setUnidadePersonalizada] = useState("");
+  const [quantidadeInicial, setQuantidadeInicial] = useState("");
   const [estoqueMinimo, setEstoqueMinimo] = useState("0");
   const [periodicidade, setPeriodicidade] =
     useState<PeriodicidadeEstoque>("SEM_PREVISAO");
@@ -201,6 +203,7 @@ export default function EstoquePage() {
     useState<MaterialEstoque | null>(null);
   const [editNome, setEditNome] = useState("");
   const [editUnidade, setEditUnidade] = useState("Unidade");
+  const [editUnidadePersonalizada, setEditUnidadePersonalizada] = useState("");
   const [editEstoqueMinimo, setEditEstoqueMinimo] = useState("0");
   const [editPeriodicidade, setEditPeriodicidade] =
     useState<PeriodicidadeEstoque>("SEM_PREVISAO");
@@ -209,6 +212,14 @@ export default function EstoquePage() {
   const podeConfigurar = usuario?.perfil === "GESTOR";
   const podeAprovar =
     usuario?.perfil === "GESTOR" || usuario?.perfil === "ENCARREGADO";
+
+  const opcoesUnidade = useMemo(() => {
+    const base = ["Unidade", "Kg", "Metro", "Litro", "Pacote"];
+    const cadastradas = unidades.map((item) => item.nome);
+    return Array.from(new Set([...base, ...cadastradas])).sort((a, b) =>
+      a.localeCompare(b),
+    );
+  }, [unidades]);
 
   const nomesMateriais = useMemo(() => {
     return materiais.reduce<Record<string, string>>((mapa, material) => {
@@ -339,12 +350,25 @@ export default function EstoquePage() {
       return;
     }
 
+    const unidadeFinal =
+      unidade === "OUTRA" ? unidadePersonalizada.trim() : unidade;
+
+    if (!unidadeFinal) {
+      setErro("Informe a unidade de medida.");
+      return;
+    }
+
+    if (quantidadeInicial && Number(quantidadeInicial) < 0) {
+      setErro("A quantidade inicial nao pode ser negativa.");
+      return;
+    }
+
     try {
       setSalvando(true);
       const supabase = getSupabase();
-      const { error } = await supabase.rpc("cadastrar_material_estoque", {
+      const { data, error } = await supabase.rpc("cadastrar_material_estoque", {
         nome_input: nome,
-        unidade_input: unidade,
+        unidade_input: unidadeFinal,
         estoque_minimo_input: Number(estoqueMinimo || 0),
         periodicidade_input: periodicidade,
         ultimo_recebimento_input: ultimoRecebimento || null,
@@ -352,8 +376,29 @@ export default function EstoquePage() {
 
       if (error) throw error;
 
+      const materialCriado = data as MaterialEstoque | null;
+      if (materialCriado?.id && Number(quantidadeInicial || 0) > 0) {
+        const { error: movimentoError } = await supabase.rpc(
+          "registrar_movimentacao_estoque",
+          {
+            material_id_input: materialCriado.id,
+            tipo_input: "ENTRADA",
+            quantidade_input: Number(quantidadeInicial),
+            colaborador_id_input: null,
+            motivo_input: "Saldo inicial",
+            observacao_input: "Entrada informada no cadastro do material",
+            ordem_servico_id_input: null,
+            registrado_por_colaborador_id_input: usuario?.id ?? null,
+          },
+        );
+
+        if (movimentoError) throw movimentoError;
+      }
+
       setNome("");
       setUnidade("Unidade");
+      setUnidadePersonalizada("");
+      setQuantidadeInicial("");
       setEstoqueMinimo("0");
       setPeriodicidade("SEM_PREVISAO");
       setUltimoRecebimento("");
@@ -417,9 +462,11 @@ export default function EstoquePage() {
   }
 
   function abrirEdicaoMaterial(material: MaterialEstoque) {
+    const unidadeExiste = opcoesUnidade.includes(material.unidade);
     setMaterialEmEdicao(material);
     setEditNome(material.nome);
-    setEditUnidade(material.unidade || "Unidade");
+    setEditUnidade(unidadeExiste ? material.unidade : "OUTRA");
+    setEditUnidadePersonalizada(unidadeExiste ? "" : material.unidade || "");
     setEditEstoqueMinimo(String(numero(material.estoque_minimo)));
     setEditPeriodicidade(material.periodicidade as PeriodicidadeEstoque);
     setEditUltimoRecebimento(material.ultimo_recebimento ?? "");
@@ -434,13 +481,21 @@ export default function EstoquePage() {
       return;
     }
 
+    const unidadeFinal =
+      editUnidade === "OUTRA" ? editUnidadePersonalizada.trim() : editUnidade;
+
+    if (!unidadeFinal) {
+      setErro("Informe a unidade de medida.");
+      return;
+    }
+
     try {
       setSalvando(true);
       const supabase = getSupabase();
       const { error } = await supabase.rpc("atualizar_material_estoque", {
         material_id_input: materialEmEdicao.id,
         nome_input: editNome,
-        unidade_input: editUnidade,
+        unidade_input: unidadeFinal,
         estoque_minimo_input: Number(editEstoqueMinimo || 0),
         periodicidade_input: editPeriodicidade,
         ultimo_recebimento_input: editUltimoRecebimento || null,
@@ -666,16 +721,29 @@ export default function EstoquePage() {
                   onChange={(event) => setUnidade(event.target.value)}
                   className="h-11 w-full rounded-md border border-slate-300 px-3 text-sm outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100"
                 >
-                  {(unidades.length > 0
-                    ? unidades.map((item) => item.nome)
-                    : ["Unidade", "Kg", "Metro", "Litro", "Pacote"]
-                  ).map((item) => (
+                  {opcoesUnidade.map((item) => (
                     <option key={item} value={item}>
                       {item}
                     </option>
                   ))}
+                  <option value="OUTRA">Outra unidade</option>
                 </select>
               </label>
+              {unidade === "OUTRA" && (
+                <Input
+                  label="Digite a nova unidade"
+                  value={unidadePersonalizada}
+                  onChange={setUnidadePersonalizada}
+                  placeholder="Ex: Caixa, Rolo, Galão..."
+                />
+              )}
+              <Input
+                label="Quantidade inicial"
+                type="number"
+                value={quantidadeInicial}
+                onChange={setQuantidadeInicial}
+                placeholder="Ex: 10"
+              />
               <Input
                 label="Estoque minimo"
                 type="number"
@@ -1001,16 +1069,22 @@ export default function EstoquePage() {
                   onChange={(event) => setEditUnidade(event.target.value)}
                   className="h-11 w-full rounded-md border border-slate-300 px-3 text-sm outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100"
                 >
-                  {(unidades.length > 0
-                    ? unidades.map((item) => item.nome)
-                    : ["Unidade", "Kg", "Metro", "Litro", "Pacote"]
-                  ).map((item) => (
+                  {opcoesUnidade.map((item) => (
                     <option key={item} value={item}>
                       {item}
                     </option>
                   ))}
+                  <option value="OUTRA">Outra unidade</option>
                 </select>
               </label>
+              {editUnidade === "OUTRA" && (
+                <Input
+                  label="Digite a nova unidade"
+                  value={editUnidadePersonalizada}
+                  onChange={setEditUnidadePersonalizada}
+                  placeholder="Ex: Caixa, Rolo, Galão..."
+                />
+              )}
               <Input
                 label="Estoque minimo"
                 type="number"
