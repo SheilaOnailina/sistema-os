@@ -414,9 +414,6 @@ export default function DashboardPage() {
         const emExecucao = ordensDoColaborador.filter(
           (ordem) => ordem.status === "EM_EXECUCAO",
         ).length;
-        const concluidas = ordensDoColaborador.filter(
-          (ordem) => ordem.status === "CONCLUIDA",
-        ).length;
         const incompletas = ordensDoColaborador.filter(
           (ordem) => ordem.status === "INCOMPLETA",
         ).length;
@@ -430,7 +427,6 @@ export default function DashboardPage() {
           ativo: colaborador.ativo,
           abertas,
           emExecucao,
-          concluidas,
           incompletas,
           aguardandoValidacao,
           cargaAtual: abertas + emExecucao,
@@ -1385,15 +1381,12 @@ export default function DashboardPage() {
                         </div>
                       </div>
 
-                      <div className="mt-3 grid grid-cols-2 gap-2 text-center text-xs">
+                      <div className="mt-3 grid grid-cols-3 gap-2 text-center text-xs">
                         <div className="rounded bg-amber-100 px-2 py-1 text-amber-800">
                           <strong>{colaborador.abertas}</strong> abertas
                         </div>
                         <div className="rounded bg-blue-100 px-2 py-1 text-blue-800">
                           <strong>{colaborador.emExecucao}</strong> exec.
-                        </div>
-                        <div className="rounded bg-emerald-100 px-2 py-1 text-emerald-800">
-                          <strong>{colaborador.concluidas}</strong> concl.
                         </div>
                         <div className="rounded bg-violet-100 px-2 py-1 text-violet-800">
                           <strong>{colaborador.aguardandoValidacao}</strong> valid.

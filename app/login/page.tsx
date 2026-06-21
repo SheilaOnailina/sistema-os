@@ -8,17 +8,13 @@ import { getSupabase, type Colaborador } from "@/lib/supabase";
 
 const sessionKey = "sistema-os-colaborador";
 
-function onlyNumbers(value: string) {
-  return value.replace(/\D/g, "");
-}
-
 function getErrorMessage(error: unknown) {
   return error instanceof Error ? error.message : "Nao foi possivel entrar.";
 }
 
 export default function LoginPage() {
   const router = useRouter();
-  const [cpf, setCpf] = useState("");
+  const [identificador, setIdentificador] = useState("");
   const [senha, setSenha] = useState("");
   const [mostrarSenha, setMostrarSenha] = useState(false);
   const [carregando, setCarregando] = useState(false);
@@ -28,10 +24,10 @@ export default function LoginPage() {
     event.preventDefault();
     setErro(null);
 
-    const cpfLimpo = onlyNumbers(cpf);
+    const login = identificador.trim();
 
-    if (!cpfLimpo || !senha) {
-      setErro("Informe CPF e senha para continuar.");
+    if (!login || !senha) {
+      setErro("Informe CPF ou nome e senha para continuar.");
       return;
     }
 
@@ -39,7 +35,7 @@ export default function LoginPage() {
       setCarregando(true);
       const supabase = getSupabase();
       const { data, error } = await supabase.rpc("login_colaborador", {
-        cpf_input: cpfLimpo,
+        cpf_input: login,
         senha_input: senha,
       });
 
@@ -48,7 +44,7 @@ export default function LoginPage() {
       const usuarioBase = data?.[0] as Colaborador | undefined;
 
       if (!usuarioBase) {
-        setErro("CPF ou senha invalidos.");
+        setErro("CPF/nome ou senha invalidos.");
         return;
       }
 
@@ -86,7 +82,7 @@ export default function LoginPage() {
             Entrar no Sistema OS
           </h1>
           <p className="mt-1 text-sm text-slate-500">
-            Acesse com CPF e senha cadastrados pelo gestor.
+            Acesse com CPF ou nome e senha cadastrados pelo gestor.
           </p>
         </div>
 
@@ -99,7 +95,7 @@ export default function LoginPage() {
         <form onSubmit={entrar} className="space-y-4">
           <label className="block">
             <span className="mb-1 block text-sm font-semibold text-slate-700">
-              CPF
+              CPF ou nome
             </span>
             <div className="relative">
               <UserRound
@@ -108,11 +104,10 @@ export default function LoginPage() {
                 aria-hidden="true"
               />
               <input
-                value={cpf}
-                onChange={(event) => setCpf(event.target.value)}
-                inputMode="numeric"
+                value={identificador}
+                onChange={(event) => setIdentificador(event.target.value)}
                 autoComplete="username"
-                placeholder="Digite somente numeros"
+                placeholder="Digite o CPF ou nome cadastrado"
                 className="h-11 w-full rounded-md border border-slate-300 pl-9 pr-3 text-sm outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
               />
             </div>

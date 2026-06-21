@@ -237,7 +237,9 @@ export default function ColaboradoresPage() {
       }
 
       setForm(initialForm);
-      setSucesso("Colaborador cadastrado. A senha inicial e o CPF.");
+      setSucesso(
+        "Colaborador cadastrado. A senha inicial sao os 6 primeiros digitos do telefone.",
+      );
       await carregarColaboradores();
     } catch (error) {
       console.error("Erro ao cadastrar colaborador:", error);
@@ -347,7 +349,7 @@ export default function ColaboradoresPage() {
 
   async function resetarSenha(colaborador: Colaborador) {
     const confirmou = window.confirm(
-      `Resetar a senha de ${colaborador.nome} para o CPF cadastrado?`,
+      `Resetar a senha de ${colaborador.nome} para os 6 primeiros digitos do telefone cadastrado?`,
     );
 
     if (!confirmou) return;
@@ -368,7 +370,9 @@ export default function ColaboradoresPage() {
         return;
       }
 
-      setSucesso("Senha resetada. A senha inicial voltou a ser o CPF.");
+      setSucesso(
+        "Senha resetada. A senha voltou a ser os 6 primeiros digitos do telefone.",
+      );
       await carregarColaboradores();
     } catch (error) {
       console.error("Erro ao resetar senha:", error);
@@ -415,7 +419,7 @@ export default function ColaboradoresPage() {
               Colaboradores
             </h1>
             <p className="mt-1 text-sm text-slate-500">
-              Cadastre tecnicos, gestores e solicitantes. A senha inicial sempre sera o CPF.
+              Cadastre tecnicos, gestores e solicitantes. A senha inicial sera os 6 primeiros digitos do telefone.
             </p>
           </div>
 
@@ -486,7 +490,7 @@ export default function ColaboradoresPage() {
                   Novo colaborador
                 </h2>
                 <p className="text-sm text-slate-500">
-                  O CPF sera usado como senha inicial.
+                  O telefone sera usado como senha inicial: os 6 primeiros digitos.
                 </p>
               </div>
             </div>
