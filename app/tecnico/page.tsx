@@ -15,13 +15,19 @@ import {
 } from "lucide-react";
 import {
   getSupabase,
-type Colaborador,
+  type Colaborador,
+  type Ocorrencia,
   type OrdemServico,
   type PrioridadeOS,
 } from "@/lib/supabase";
 
 const sessionKey = "sistema-os-colaborador";
 type ResultadoServico = "REALIZADO" | "INCOMPLETO" | "";
+const statusOcorrenciaLabels: Record<string, string> = {
+  AGUARDANDO_AVALIACAO: "Em avaliacao",
+  GEROU_OS: "Virou OS",
+  ARQUIVADA: "Arquivada",
+};
 
 function getErrorMessage(error: unknown) {
   return error instanceof Error ? error.message : "Falha ao conectar ao banco.";
@@ -89,10 +95,27 @@ async function listarOrdensDoTecnico(colaboradorId: string) {
   return ((data ?? []) as OrdemServico[]).sort(ordenarOrdens);
 }
 
+async function listarOcorrenciasDoColaborador(colaboradorId: string) {
+  const supabase = getSupabase();
+  const { data, error } = await supabase
+    .from("ocorrencias")
+    .select("*")
+    .eq("registrado_por_colaborador_id", colaboradorId)
+    .order("numero_ocorrencia", { ascending: false });
+
+  if (error) {
+    if (error.code === "42P01") return [];
+    throw error;
+  }
+
+  return (data ?? []) as Ocorrencia[];
+}
+
 export default function PainelTecnicoIndividualPage() {
   const router = useRouter();
   const [usuario] = useState<Colaborador | null>(getSessaoInicial);
   const [listaOS, setListaOS] = useState<OrdemServico[]>([]);
+  const [listaOcorrencias, setListaOcorrencias] = useState<Ocorrencia[]>([]);
   const [osSelecionada, setOsSelecionada] = useState<OrdemServico | null>(null);
   const [insumos, setInsumos] = useState("");
   const [resultadoServico, setResultadoServico] = useState<ResultadoServico>("");
@@ -100,7 +123,7 @@ export default function PainelTecnicoIndividualPage() {
   const [pendencia, setPendencia] = useState("");
   const [registrandoSolicitada, setRegistrandoSolicitada] = useState(false);
   const [salvandoSolicitada, setSalvandoSolicitada] = useState(false);
-  const [solicitanteDemanda, setSolicitanteDemanda] = useState("");
+  const [tipoOcorrencia, setTipoOcorrencia] = useState("MANUTENCAO");
   const [localSolicitado, setLocalSolicitado] = useState("");
   const [descricaoSolicitada, setDescricaoSolicitada] = useState("");
   const [carregando, setCarregando] = useState(true);
@@ -121,7 +144,7 @@ export default function PainelTecnicoIndividualPage() {
       return;
     }
 
-    if (usuario.perfil !== "TECNICO") {
+    if (usuario.perfil === "GESTOR") {
       router.replace("/dashboard");
     }
   }, [router, usuario]);
@@ -131,8 +154,14 @@ export default function PainelTecnicoIndividualPage() {
 
     try {
       setAtualizando(true);
-      const ordens = await listarOrdensDoTecnico(usuario.id);
+      const [ordens, ocorrencias] = await Promise.all([
+        usuario.perfil === "TECNICO"
+          ? listarOrdensDoTecnico(usuario.id)
+          : Promise.resolve([]),
+        listarOcorrenciasDoColaborador(usuario.id),
+      ]);
       setListaOS(ordens);
+      setListaOcorrencias(ocorrencias);
       setErro(null);
     } catch (error) {
       console.error("Erro detalhado do Supabase:", error);
@@ -144,14 +173,20 @@ export default function PainelTecnicoIndividualPage() {
   }
 
   useEffect(() => {
-    if (!usuario || usuario.perfil !== "TECNICO") return;
+    if (!usuario || usuario.perfil === "GESTOR") return;
 
     let montado = true;
 
-    listarOrdensDoTecnico(usuario.id)
-      .then((ordens) => {
+    Promise.all([
+      usuario.perfil === "TECNICO"
+        ? listarOrdensDoTecnico(usuario.id)
+        : Promise.resolve([]),
+      listarOcorrenciasDoColaborador(usuario.id),
+    ])
+      .then(([ordens, ocorrencias]) => {
         if (!montado) return;
         setListaOS(ordens);
+        setListaOcorrencias(ocorrencias);
         setErro(null);
       })
       .catch((error: unknown) => {
@@ -172,11 +207,11 @@ export default function PainelTecnicoIndividualPage() {
     return {
       abertas: listaOS.filter((os) => os.status === "ABERTA").length,
       emExecucao: listaOS.filter((os) => os.status === "EM_EXECUCAO").length,
-      solicitadas: listaOS.filter(
-        (os) => os.status === "AGUARDANDO_VALIDACAO",
+      solicitadas: listaOcorrencias.filter(
+        (ocorrencia) => ocorrencia.status === "AGUARDANDO_AVALIACAO",
       ).length,
     };
-  }, [listaOS]);
+  }, [listaOS, listaOcorrencias]);
 
   async function iniciarDemanda(id: string) {
     const supabase = getSupabase();
@@ -255,7 +290,7 @@ export default function PainelTecnicoIndividualPage() {
   }
 
   function limparRegistroSolicitado() {
-    setSolicitanteDemanda("");
+    setTipoOcorrencia("MANUTENCAO");
     setLocalSolicitado("");
     setDescricaoSolicitada("");
   }
@@ -264,33 +299,33 @@ export default function PainelTecnicoIndividualPage() {
     if (!usuario) return;
 
     if (
-      !solicitanteDemanda.trim() ||
       !localSolicitado.trim() ||
       !descricaoSolicitada.trim()
     ) {
-      setErro("Informe solicitante, local e descricao da demanda solicitada.");
+      setErro("Informe local e descricao da ocorrencia.");
       return;
     }
 
     try {
       setSalvandoSolicitada(true);
       const supabase = getSupabase();
-      const { error } = await supabase.rpc("registrar_demanda_solicitada", {
+      const { error } = await supabase.rpc("registrar_ocorrencia", {
         colaborador_id_input: usuario.id,
-        solicitante_input: solicitanteDemanda,
+        tipo_input: tipoOcorrencia,
         local_input: localSolicitado,
         descricao_input: descricaoSolicitada,
+        prioridade_input: "NORMAL",
       });
 
       if (error) throw error;
 
-      alert("Demanda solicitada registrada e enviada para validacao do gestor.");
+      alert("Ocorrencia registrada e enviada para avaliacao do gestor.");
       limparRegistroSolicitado();
       setRegistrandoSolicitada(false);
       setErro(null);
       await buscarOrdens();
     } catch (error) {
-      console.error("Erro ao registrar demanda solicitada:", error);
+      console.error("Erro ao registrar ocorrencia:", error);
       setErro(getErrorMessage(error));
     } finally {
       setSalvandoSolicitada(false);
@@ -321,7 +356,9 @@ export default function PainelTecnicoIndividualPage() {
               </p>
               <h1 className="mt-1 text-xl font-bold">{usuario.nome}</h1>
               <p className="mt-1 text-xs text-slate-300">
-                Minhas Ordens de Servico
+                {usuario.perfil === "TECNICO"
+                  ? "Minhas Ordens de Servico"
+                  : "Registro de ocorrencias"}
               </p>
             </div>
             <div className="flex gap-2">
@@ -368,14 +405,14 @@ export default function PainelTecnicoIndividualPage() {
           className="inline-flex items-center justify-center gap-2 rounded-2xl bg-emerald-600 px-4 py-3 text-sm font-bold text-white shadow-lg transition hover:bg-emerald-700"
         >
           <PlusCircle size={18} aria-hidden="true" />
-          Registrar demanda solicitada
+          Registrar ocorrencia
         </button>
 
         <div className="rounded-3xl border border-slate-200 bg-white shadow-xl">
           <div className="flex items-center justify-between border-b border-slate-100 p-4">
             <div className="flex items-center gap-2 text-sm font-bold text-slate-700">
               <ClipboardList size={18} aria-hidden="true" />
-              Minhas demandas
+              {usuario.perfil === "TECNICO" ? "Minhas demandas" : "Ocorrencias enviadas"}
             </div>
             <button
               onClick={buscarOrdens}
@@ -400,11 +437,11 @@ export default function PainelTecnicoIndividualPage() {
 
           {carregando ? (
             <p className="py-12 text-center text-sm text-slate-500">
-              Buscando suas ordens de servico...
+              Buscando suas demandas...
             </p>
           ) : !osSelecionada ? (
             <div className="space-y-3 p-4">
-              {listaOS.map((os) => (
+              {usuario.perfil === "TECNICO" && listaOS.map((os) => (
                 <button
                   key={os.id}
                   onClick={() => {
@@ -451,7 +488,7 @@ export default function PainelTecnicoIndividualPage() {
                 </button>
               ))}
 
-              {listaOS.length === 0 && (
+              {usuario.perfil === "TECNICO" && listaOS.length === 0 && (
                 <div className="rounded-2xl bg-slate-50 p-8 text-center">
                   <UserRound
                     size={28}
@@ -463,6 +500,51 @@ export default function PainelTecnicoIndividualPage() {
                   </p>
                 </div>
               )}
+
+              <div className="border-t border-slate-100 pt-4">
+                <div className="mb-3 flex items-center justify-between">
+                  <h2 className="text-sm font-bold text-slate-800">
+                    Minhas ocorrencias
+                  </h2>
+                  <span className="text-xs font-semibold text-slate-400">
+                    {listaOcorrencias.length} registro(s)
+                  </span>
+                </div>
+
+                {listaOcorrencias.length === 0 ? (
+                  <div className="rounded-2xl bg-slate-50 p-5 text-center text-sm text-slate-500">
+                    Nenhuma ocorrencia registrada.
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    {listaOcorrencias.map((ocorrencia) => (
+                      <div
+                        key={ocorrencia.id}
+                        className="rounded-2xl border border-slate-200 bg-white p-3 shadow-sm"
+                      >
+                        <div className="mb-1 flex items-center justify-between gap-2">
+                          <span className="text-xs font-bold text-emerald-700">
+                            Ocorrencia #{ocorrencia.numero_ocorrencia}
+                          </span>
+                          <span className="rounded bg-slate-100 px-2 py-0.5 text-[10px] font-bold uppercase text-slate-600">
+                            {statusOcorrenciaLabels[ocorrencia.status] ||
+                              ocorrencia.status}
+                          </span>
+                        </div>
+                        <p className="text-xs font-bold uppercase text-slate-400">
+                          {ocorrencia.tipo}
+                        </p>
+                        <p className="text-sm font-bold text-slate-800">
+                          {ocorrencia.local}
+                        </p>
+                        <p className="text-xs text-slate-500">
+                          {ocorrencia.descricao}
+                        </p>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
             </div>
           ) : (
             <div className="space-y-4 p-5">
@@ -647,14 +729,14 @@ export default function PainelTecnicoIndividualPage() {
             <div className="flex items-start justify-between gap-3 border-b border-slate-100 p-5">
               <div>
                 <p className="text-xs font-bold uppercase tracking-wide text-emerald-700">
-                  Registro extra
+                  Registro de ocorrencia
                 </p>
                 <h2 className="mt-1 text-xl font-bold text-slate-950">
-                  Demanda solicitada
+                  Nova ocorrencia
                 </h2>
                 <p className="mt-1 text-sm text-slate-500">
-                  Registre uma solicitacao recebida e envie para o gestor
-                  validar antes de virar OS.
+                  Informe algo observado no setor para o gestor avaliar e,
+                  se necessario, transformar em OS.
                 </p>
               </div>
               <button
@@ -670,14 +752,19 @@ export default function PainelTecnicoIndividualPage() {
             <div className="space-y-4 p-5">
               <label className="block">
                 <span className="mb-1 block text-sm font-semibold text-slate-700">
-                  Solicitante *
+                  Tipo *
                 </span>
-                <input
-                  value={solicitanteDemanda}
-                  onChange={(event) => setSolicitanteDemanda(event.target.value)}
+                <select
+                  value={tipoOcorrencia}
+                  onChange={(event) => setTipoOcorrencia(event.target.value)}
                   className="h-11 w-full rounded-xl border border-slate-300 px-3 text-sm outline-none focus:ring-2 focus:ring-emerald-100"
-                  placeholder="Nome de quem pediu"
-                />
+                >
+                  <option value="MANUTENCAO">Manutencao</option>
+                  <option value="LIMPEZA">Limpeza</option>
+                  <option value="AR_CONDICIONADO">Ar-condicionado</option>
+                  <option value="ESTOQUE">Estoque/insumos</option>
+                  <option value="OUTRO">Outro</option>
+                </select>
               </label>
 
               <label className="block">
@@ -694,14 +781,14 @@ export default function PainelTecnicoIndividualPage() {
 
               <label className="block">
                 <span className="mb-1 block text-sm font-semibold text-slate-700">
-                  O que foi solicitado? *
+                  O que foi observado? *
                 </span>
                 <textarea
                   value={descricaoSolicitada}
                   onChange={(event) => setDescricaoSolicitada(event.target.value)}
                   rows={3}
                   className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-emerald-100"
-                  placeholder="Descreva o que o solicitante pediu..."
+                  placeholder="Descreva a ocorrencia observada..."
                 />
               </label>
             </div>
@@ -721,7 +808,7 @@ export default function PainelTecnicoIndividualPage() {
                 disabled={salvandoSolicitada}
                 className="rounded-xl bg-emerald-600 px-4 py-3 text-sm font-bold text-white transition hover:bg-emerald-700 disabled:opacity-60"
               >
-                {salvandoSolicitada ? "Salvando..." : "Enviar para validacao"}
+                {salvandoSolicitada ? "Salvando..." : "Enviar ocorrencia"}
               </button>
             </div>
           </div>

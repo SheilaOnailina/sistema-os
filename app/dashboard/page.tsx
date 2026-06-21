@@ -22,6 +22,7 @@ import {
 import {
   getSupabase,
   type Colaborador,
+  type Ocorrencia,
   type OrdemServico,
   type PrioridadeOS,
 } from "@/lib/supabase";
@@ -103,13 +104,29 @@ async function listarColaboradores() {
   return (data ?? []) as Colaborador[];
 }
 
+async function listarOcorrencias() {
+  const supabase = getSupabase();
+  const { data, error } = await supabase
+    .from("ocorrencias")
+    .select("*")
+    .order("numero_ocorrencia", { ascending: false });
+
+  if (error) {
+    if (error.code === "42P01") return [];
+    throw error;
+  }
+
+  return (data ?? []) as Ocorrencia[];
+}
+
 async function carregarDadosDashboard() {
-  const [ordens, colaboradores] = await Promise.all([
+  const [ordens, colaboradores, ocorrencias] = await Promise.all([
     listarOrdens(),
     listarColaboradores(),
+    listarOcorrencias(),
   ]);
 
-  return { ordens, colaboradores };
+  return { ordens, colaboradores, ocorrencias };
 }
 
 function formatDate(value?: string | null) {
@@ -174,6 +191,7 @@ function formatWhatsAppPhone(value?: string | null) {
 export default function DashboardPage() {
   const router = useRouter();
   const [ordens, setOrdens] = useState<OrdemServico[]>([]);
+  const [ocorrencias, setOcorrencias] = useState<Ocorrencia[]>([]);
   const [colaboradores, setColaboradores] = useState<Colaborador[]>([]);
   const [busca, setBusca] = useState("");
   const [filtroDashboard, setFiltroDashboard] = useState<FiltroDashboard>(null);
@@ -184,6 +202,8 @@ export default function DashboardPage() {
   const [atualizando, setAtualizando] = useState(false);
   const [redistribuindoId, setRedistribuindoId] = useState<string | null>(null);
   const [validandoId, setValidandoId] = useState<string | null>(null);
+  const [avaliandoOcorrenciaId, setAvaliandoOcorrenciaId] = useState<string | null>(null);
+  const [tecnicosPorOcorrencia, setTecnicosPorOcorrencia] = useState<Record<string, string>>({});
   const [enviandoWhatsAppId, setEnviandoWhatsAppId] = useState<string | null>(null);
   const [ordemEmEdicao, setOrdemEmEdicao] = useState<EdicaoOS | null>(null);
   const [salvandoEdicao, setSalvandoEdicao] = useState(false);
@@ -194,6 +214,7 @@ export default function DashboardPage() {
       setAtualizando(true);
       const dados = await carregarDadosDashboard();
       setOrdens(dados.ordens);
+      setOcorrencias(dados.ocorrencias);
       setColaboradores(dados.colaboradores);
       setErro(null);
     } catch (error) {
@@ -212,6 +233,7 @@ export default function DashboardPage() {
       .then((dados) => {
         if (!montado) return;
         setOrdens(dados.ordens);
+        setOcorrencias(dados.ocorrencias);
         setColaboradores(dados.colaboradores);
         setErro(null);
       })
@@ -250,6 +272,12 @@ export default function DashboardPage() {
       )
       .sort((a, b) => a.nome.localeCompare(b.nome));
   }, [colaboradores]);
+
+  const ocorrenciasPendentes = useMemo(() => {
+    return ocorrencias.filter(
+      (ocorrencia) => ocorrencia.status === "AGUARDANDO_AVALIACAO",
+    );
+  }, [ocorrencias]);
 
   const indicadores = useMemo(() => {
     const abertas = ordens.filter((ordem) => ordem.status === "ABERTA").length;
@@ -405,6 +433,7 @@ export default function DashboardPage() {
 
       const dados = await carregarDadosDashboard();
       setOrdens(dados.ordens);
+      setOcorrencias(dados.ocorrencias);
       setColaboradores(dados.colaboradores);
       setErro(null);
     } catch (error) {
@@ -429,6 +458,7 @@ export default function DashboardPage() {
 
       const dados = await carregarDadosDashboard();
       setOrdens(dados.ordens);
+      setOcorrencias(dados.ocorrencias);
       setColaboradores(dados.colaboradores);
       setErro(null);
     } catch (error) {
@@ -436,6 +466,81 @@ export default function DashboardPage() {
       setErro(getErrorMessage(error));
     } finally {
       setValidandoId(null);
+    }
+  }
+
+  async function transformarOcorrenciaEmOS(ocorrencia: Ocorrencia) {
+    const tecnicoId = tecnicosPorOcorrencia[ocorrencia.id];
+
+    if (!tecnicoId) {
+      setErro("Escolha um tecnico para transformar a ocorrencia em OS.");
+      return;
+    }
+
+    try {
+      setAvaliandoOcorrenciaId(ocorrencia.id);
+      const gestor = JSON.parse(
+        localStorage.getItem(sessionKey) ?? "null",
+      ) as Colaborador | null;
+      const supabase = getSupabase();
+      const { error } = await supabase.rpc("transformar_ocorrencia_em_os", {
+        ocorrencia_id_input: ocorrencia.id,
+        gestor_id_input: gestor?.id ?? "",
+        colaborador_id_input: tecnicoId,
+        prioridade_input: normalizePrioridade(ocorrencia.prioridade_sugerida),
+      });
+
+      if (error) throw error;
+
+      const dados = await carregarDadosDashboard();
+      setOrdens(dados.ordens);
+      setOcorrencias(dados.ocorrencias);
+      setColaboradores(dados.colaboradores);
+      setTecnicosPorOcorrencia((atuais) => {
+        const copia = { ...atuais };
+        delete copia[ocorrencia.id];
+        return copia;
+      });
+      setErro(null);
+    } catch (error) {
+      console.error("Erro ao transformar ocorrencia em OS:", error);
+      setErro(getErrorMessage(error));
+    } finally {
+      setAvaliandoOcorrenciaId(null);
+    }
+  }
+
+  async function arquivarOcorrencia(ocorrencia: Ocorrencia) {
+    const confirmou = window.confirm(
+      `Arquivar a ocorrencia #${ocorrencia.numero_ocorrencia}?`,
+    );
+
+    if (!confirmou) return;
+
+    try {
+      setAvaliandoOcorrenciaId(ocorrencia.id);
+      const gestor = JSON.parse(
+        localStorage.getItem(sessionKey) ?? "null",
+      ) as Colaborador | null;
+      const supabase = getSupabase();
+      const { error } = await supabase.rpc("arquivar_ocorrencia", {
+        ocorrencia_id_input: ocorrencia.id,
+        gestor_id_input: gestor?.id ?? "",
+        observacao_input: null,
+      });
+
+      if (error) throw error;
+
+      const dados = await carregarDadosDashboard();
+      setOrdens(dados.ordens);
+      setOcorrencias(dados.ocorrencias);
+      setColaboradores(dados.colaboradores);
+      setErro(null);
+    } catch (error) {
+      console.error("Erro ao arquivar ocorrencia:", error);
+      setErro(getErrorMessage(error));
+    } finally {
+      setAvaliandoOcorrenciaId(null);
     }
   }
 
@@ -573,6 +678,7 @@ export default function DashboardPage() {
 
       const dados = await carregarDadosDashboard();
       setOrdens(dados.ordens);
+      setOcorrencias(dados.ocorrencias);
       setColaboradores(dados.colaboradores);
       setOrdemEmEdicao(null);
       setErro(null);
@@ -656,6 +762,103 @@ export default function DashboardPage() {
             </div>
           </div>
         )}
+
+        <section className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
+          <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+            <div>
+              <p className="text-xs font-bold uppercase tracking-wide text-emerald-700">
+                Ocorrencias
+              </p>
+              <h2 className="mt-1 text-lg font-bold text-slate-950">
+                Aguardando avaliacao do gestor
+              </h2>
+              <p className="text-sm text-slate-500">
+                Registros enviados por colaboradores antes de virar OS.
+              </p>
+            </div>
+            <span className="rounded-full bg-emerald-50 px-3 py-1 text-sm font-bold text-emerald-700">
+              {ocorrenciasPendentes.length} pendente(s)
+            </span>
+          </div>
+
+          <div className="mt-4 space-y-3">
+            {ocorrenciasPendentes.length === 0 ? (
+              <div className="rounded-lg bg-slate-50 p-4 text-sm text-slate-500">
+                Nenhuma ocorrencia aguardando avaliacao.
+              </div>
+            ) : (
+              ocorrenciasPendentes.map((ocorrencia) => (
+                <div
+                  key={ocorrencia.id}
+                  className="grid gap-3 rounded-lg border border-slate-200 p-4 lg:grid-cols-[1fr_220px_220px]"
+                >
+                  <div>
+                    <div className="mb-1 flex flex-wrap items-center gap-2">
+                      <span className="font-mono text-sm font-bold text-slate-900">
+                        Ocorrencia #{ocorrencia.numero_ocorrencia}
+                      </span>
+                      <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs font-bold uppercase text-slate-600">
+                        {ocorrencia.tipo}
+                      </span>
+                      <span className="text-xs text-slate-400">
+                        {formatDate(ocorrencia.criado_em)}
+                      </span>
+                    </div>
+                    <p className="font-semibold text-slate-800">
+                      {ocorrencia.local}
+                    </p>
+                    <p className="mt-1 text-sm text-slate-600">
+                      {ocorrencia.descricao}
+                    </p>
+                    <p className="mt-2 text-xs text-slate-500">
+                      Registrado por:{" "}
+                      {nomesColaboradores[
+                        ocorrencia.registrado_por_colaborador_id
+                      ] || "Colaborador nao encontrado"}
+                    </p>
+                  </div>
+
+                  <select
+                    value={tecnicosPorOcorrencia[ocorrencia.id] ?? ""}
+                    onChange={(event) =>
+                      setTecnicosPorOcorrencia((atuais) => ({
+                        ...atuais,
+                        [ocorrencia.id]: event.target.value,
+                      }))
+                    }
+                    className="h-10 rounded-md border border-slate-300 bg-white px-3 text-sm font-semibold text-slate-700 outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                  >
+                    <option value="">Escolher tecnico</option>
+                    {tecnicosAtivos.map((tecnico) => (
+                      <option key={tecnico.id} value={tecnico.id}>
+                        {tecnico.nome}
+                      </option>
+                    ))}
+                  </select>
+
+                  <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-1">
+                    <button
+                      type="button"
+                      onClick={() => transformarOcorrenciaEmOS(ocorrencia)}
+                      disabled={avaliandoOcorrenciaId === ocorrencia.id}
+                      className="h-10 rounded-md bg-emerald-600 px-3 text-sm font-bold text-white transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-60"
+                    >
+                      Virar OS
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => arquivarOcorrencia(ocorrencia)}
+                      disabled={avaliandoOcorrenciaId === ocorrencia.id}
+                      className="h-10 rounded-md border border-slate-300 px-3 text-sm font-bold text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
+                    >
+                      Arquivar
+                    </button>
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+        </section>
 
         <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
           <Indicador

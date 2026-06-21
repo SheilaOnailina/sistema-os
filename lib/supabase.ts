@@ -1,7 +1,12 @@
 import { createClient } from "@supabase/supabase-js";
 
-export type PerfilColaborador = "GESTOR" | "TECNICO";
+export type PerfilColaborador = "GESTOR" | "TECNICO" | "SOLICITANTE";
 export type PrioridadeOS = "BAIXA" | "NORMAL" | "ALTA" | "URGENTE";
+export type StatusOcorrencia =
+  | "AGUARDANDO_AVALIACAO"
+  | "GEROU_OS"
+  | "ARQUIVADA"
+  | string;
 
 export type Colaborador = {
   id: string;
@@ -31,6 +36,22 @@ export type OrdemServico = {
   whatsapp_enviado_em?: string | null;
 };
 
+export type Ocorrencia = {
+  id: string;
+  numero_ocorrencia: string | number;
+  registrado_por_colaborador_id: string;
+  tipo: string;
+  local: string;
+  descricao: string;
+  status: StatusOcorrencia;
+  prioridade_sugerida?: PrioridadeOS | string | null;
+  ordem_servico_id?: string | null;
+  criado_em?: string | null;
+  avaliado_em?: string | null;
+  avaliado_por_gestor_id?: string | null;
+  observacao_gestor?: string | null;
+};
+
 type Database = {
   public: {
     Tables: {
@@ -44,6 +65,12 @@ type Database = {
         Row: Colaborador;
         Insert: Partial<Colaborador> & Pick<Colaborador, "nome" | "cpf">;
         Update: Partial<Colaborador>;
+        Relationships: [];
+      };
+      ocorrencias: {
+        Row: Ocorrencia;
+        Insert: Partial<Ocorrencia>;
+        Update: Partial<Ocorrencia>;
         Relationships: [];
       };
     };
@@ -106,6 +133,33 @@ type Database = {
           descricao_input: string;
         };
         Returns: OrdemServico;
+      };
+      registrar_ocorrencia: {
+        Args: {
+          colaborador_id_input: string;
+          tipo_input: string;
+          local_input: string;
+          descricao_input: string;
+          prioridade_input?: PrioridadeOS | string;
+        };
+        Returns: Ocorrencia;
+      };
+      transformar_ocorrencia_em_os: {
+        Args: {
+          ocorrencia_id_input: string;
+          gestor_id_input: string;
+          colaborador_id_input: string;
+          prioridade_input?: PrioridadeOS | string;
+        };
+        Returns: OrdemServico;
+      };
+      arquivar_ocorrencia: {
+        Args: {
+          ocorrencia_id_input: string;
+          gestor_id_input: string;
+          observacao_input?: string | null;
+        };
+        Returns: boolean;
       };
     };
     Enums: Record<string, never>;

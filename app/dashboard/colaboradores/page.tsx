@@ -125,12 +125,16 @@ export default function ColaboradoresPage() {
     const gestores = colaboradores.filter(
       (colaborador) => colaborador.perfil === "GESTOR",
     ).length;
+    const solicitantes = colaboradores.filter(
+      (colaborador) => colaborador.perfil === "SOLICITANTE",
+    ).length;
 
     return {
       total: colaboradores.length,
       ativos,
       tecnicos,
       gestores,
+      solicitantes,
     };
   }, [colaboradores]);
 
@@ -346,7 +350,7 @@ export default function ColaboradoresPage() {
               Colaboradores
             </h1>
             <p className="mt-1 text-sm text-slate-500">
-              Cadastre tecnicos e gestores. A senha inicial sempre sera o CPF.
+              Cadastre tecnicos, gestores e solicitantes. A senha inicial sempre sera o CPF.
             </p>
           </div>
 
@@ -386,11 +390,16 @@ export default function ColaboradoresPage() {
           </div>
         )}
 
-        <section className="grid gap-4 md:grid-cols-4">
+        <section className="grid gap-4 md:grid-cols-5">
           <Indicador titulo="Total" valor={indicadores.total} detalhe="Cadastrados" />
           <Indicador titulo="Ativos" valor={indicadores.ativos} detalhe="Podem acessar" />
           <Indicador titulo="Tecnicos" valor={indicadores.tecnicos} detalhe="Perfil tecnico" />
           <Indicador titulo="Gestores" valor={indicadores.gestores} detalhe="Perfil gestor" />
+          <Indicador
+            titulo="Solicitantes"
+            valor={indicadores.solicitantes}
+            detalhe="Registram ocorrencias"
+          />
         </section>
 
         <section className="grid gap-4 lg:grid-cols-[380px_1fr]">
@@ -451,6 +460,7 @@ export default function ColaboradoresPage() {
                   className="h-11 w-full rounded-md border border-slate-300 bg-white px-3 text-sm outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
                 >
                   <option value="TECNICO">Tecnico</option>
+                  <option value="SOLICITANTE">Solicitante</option>
                   <option value="GESTOR">Gestor</option>
                 </select>
               </label>
@@ -669,6 +679,7 @@ export default function ColaboradoresPage() {
                   className="h-11 w-full rounded-md border border-slate-300 bg-white px-3 text-sm outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
                 >
                   <option value="TECNICO">Tecnico</option>
+                  <option value="SOLICITANTE">Solicitante</option>
                   <option value="GESTOR">Gestor</option>
                 </select>
               </label>
