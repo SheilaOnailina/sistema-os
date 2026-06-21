@@ -445,9 +445,6 @@ export default function PainelTecnicoIndividualPage() {
                       ]}
                     </span>
                   )}
-                  <span className="text-xs font-bold text-slate-500">
-                    {osSelecionada.solicitante}
-                  </span>
                 </div>
                 <h2 className="mb-1 text-base font-bold text-slate-800">
                   {osSelecionada.local}
