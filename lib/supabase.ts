@@ -7,6 +7,13 @@ export type StatusOcorrencia =
   | "GEROU_OS"
   | "REGISTRADA_CIENTE"
   | string;
+export type PeriodicidadeEstoque =
+  | "SEM_PREVISAO"
+  | "MENSAL"
+  | "BIMESTRAL"
+  | "TRIMESTRAL"
+  | "SEMESTRAL"
+  | "ANUAL";
 
 export type Colaborador = {
   id: string;
@@ -52,6 +59,33 @@ export type Ocorrencia = {
   observacao_gestor?: string | null;
 };
 
+export type MaterialEstoque = {
+  id: string;
+  nome: string;
+  unidade: string;
+  quantidade_atual: number;
+  estoque_minimo: number;
+  periodicidade: PeriodicidadeEstoque | string;
+  ultimo_recebimento?: string | null;
+  proximo_recebimento?: string | null;
+  ativo: boolean;
+  criado_em?: string | null;
+  atualizado_em?: string | null;
+};
+
+export type MovimentacaoEstoque = {
+  id: string;
+  material_id: string;
+  tipo: "ENTRADA" | "SAIDA" | string;
+  quantidade: number;
+  colaborador_id?: string | null;
+  ordem_servico_id?: string | null;
+  motivo?: string | null;
+  observacao?: string | null;
+  registrado_por_colaborador_id?: string | null;
+  criado_em?: string | null;
+};
+
 type Database = {
   public: {
     Tables: {
@@ -71,6 +105,19 @@ type Database = {
         Row: Ocorrencia;
         Insert: Partial<Ocorrencia>;
         Update: Partial<Ocorrencia>;
+        Relationships: [];
+      };
+      materiais_estoque: {
+        Row: MaterialEstoque;
+        Insert: Partial<MaterialEstoque> & Pick<MaterialEstoque, "nome">;
+        Update: Partial<MaterialEstoque>;
+        Relationships: [];
+      };
+      movimentacoes_estoque: {
+        Row: MovimentacaoEstoque;
+        Insert: Partial<MovimentacaoEstoque> &
+          Pick<MovimentacaoEstoque, "material_id" | "tipo" | "quantidade">;
+        Update: Partial<MovimentacaoEstoque>;
         Relationships: [];
       };
     };
@@ -160,6 +207,29 @@ type Database = {
           observacao_input?: string | null;
         };
         Returns: boolean;
+      };
+      cadastrar_material_estoque: {
+        Args: {
+          nome_input: string;
+          unidade_input: string;
+          estoque_minimo_input: number;
+          periodicidade_input: PeriodicidadeEstoque | string;
+          ultimo_recebimento_input?: string | null;
+        };
+        Returns: MaterialEstoque;
+      };
+      registrar_movimentacao_estoque: {
+        Args: {
+          material_id_input: string;
+          tipo_input: "ENTRADA" | "SAIDA" | string;
+          quantidade_input: number;
+          colaborador_id_input?: string | null;
+          motivo_input?: string | null;
+          observacao_input?: string | null;
+          ordem_servico_id_input?: string | null;
+          registrado_por_colaborador_id_input?: string | null;
+        };
+        Returns: MovimentacaoEstoque;
       };
     };
     Enums: Record<string, never>;

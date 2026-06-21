@@ -752,6 +752,12 @@ export default function DashboardPage() {
               Colaboradores
             </Link>
             <Link
+              href="/dashboard/estoque"
+              className="inline-flex h-10 items-center justify-center rounded-md border border-slate-300 px-4 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
+            >
+              Estoque
+            </Link>
+            <Link
               href="/alterar-senha"
               className="inline-flex h-10 items-center justify-center gap-2 rounded-md border border-slate-300 px-4 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
             >

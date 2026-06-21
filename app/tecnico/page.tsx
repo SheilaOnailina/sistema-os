@@ -13,10 +13,12 @@ import {
   UserRound,
   X,
   ChevronDown,
+  PackageMinus,
 } from "lucide-react";
 import {
   getSupabase,
   type Colaborador,
+  type MaterialEstoque,
   type Ocorrencia,
   type OrdemServico,
   type PrioridadeOS,
@@ -144,21 +146,45 @@ async function listarOcorrenciasDoColaborador(colaboradorId: string) {
   return (data ?? []) as Ocorrencia[];
 }
 
+async function listarMateriaisEstoque() {
+  const supabase = getSupabase();
+  const { data, error } = await supabase
+    .from("materiais_estoque")
+    .select("*")
+    .eq("ativo", true)
+    .order("nome", { ascending: true });
+
+  if (error) {
+    if (isTabelaAusenteError(error)) return [];
+    throw error;
+  }
+
+  return (data ?? []) as MaterialEstoque[];
+}
+
 export default function PainelTecnicoIndividualPage() {
   const router = useRouter();
   const [usuario] = useState<Colaborador | null>(getSessaoInicial);
   const [listaOS, setListaOS] = useState<OrdemServico[]>([]);
   const [listaOcorrencias, setListaOcorrencias] = useState<Ocorrencia[]>([]);
+  const [materiaisEstoque, setMateriaisEstoque] = useState<MaterialEstoque[]>(
+    [],
+  );
   const [osSelecionada, setOsSelecionada] = useState<OrdemServico | null>(null);
   const [insumos, setInsumos] = useState("");
   const [resultadoServico, setResultadoServico] = useState<ResultadoServico>("");
   const [usouMaterial, setUsouMaterial] = useState<"SIM" | "NAO" | "">("");
   const [pendencia, setPendencia] = useState("");
   const [registrandoSolicitada, setRegistrandoSolicitada] = useState(false);
+  const [registrandoRetirada, setRegistrandoRetirada] = useState(false);
   const [salvandoSolicitada, setSalvandoSolicitada] = useState(false);
+  const [salvandoRetirada, setSalvandoRetirada] = useState(false);
   const [tipoOcorrencia, setTipoOcorrencia] = useState("MANUTENCAO");
   const [localSolicitado, setLocalSolicitado] = useState("");
   const [descricaoSolicitada, setDescricaoSolicitada] = useState("");
+  const [materialRetiradaId, setMaterialRetiradaId] = useState("");
+  const [quantidadeRetirada, setQuantidadeRetirada] = useState("");
+  const [motivoRetirada, setMotivoRetirada] = useState("");
   const [carregando, setCarregando] = useState(true);
   const [atualizando, setAtualizando] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
@@ -189,14 +215,16 @@ export default function PainelTecnicoIndividualPage() {
 
     try {
       setAtualizando(true);
-      const [ordens, ocorrencias] = await Promise.all([
+      const [ordens, ocorrencias, materiais] = await Promise.all([
         usuario.perfil === "TECNICO"
           ? listarOrdensDoTecnico(usuario.id)
           : Promise.resolve([]),
         listarOcorrenciasDoColaborador(usuario.id),
+        listarMateriaisEstoque(),
       ]);
       setListaOS(ordens);
       setListaOcorrencias(ocorrencias);
+      setMateriaisEstoque(materiais);
       setErro(null);
     } catch (error) {
       console.error("Erro detalhado do Supabase:", error);
@@ -217,11 +245,13 @@ export default function PainelTecnicoIndividualPage() {
         ? listarOrdensDoTecnico(usuario.id)
         : Promise.resolve([]),
       listarOcorrenciasDoColaborador(usuario.id),
+      listarMateriaisEstoque(),
     ])
-      .then(([ordens, ocorrencias]) => {
+      .then(([ordens, ocorrencias, materiais]) => {
         if (!montado) return;
         setListaOS(ordens);
         setListaOcorrencias(ocorrencias);
+        setMateriaisEstoque(materiais);
         setErro(null);
       })
       .catch((error: unknown) => {
@@ -342,6 +372,12 @@ export default function PainelTecnicoIndividualPage() {
     setDescricaoSolicitada("");
   }
 
+  function limparRetiradaMaterial() {
+    setMaterialRetiradaId("");
+    setQuantidadeRetirada("");
+    setMotivoRetirada("");
+  }
+
   async function registrarDemandaSolicitada() {
     if (!usuario) return;
 
@@ -376,6 +412,53 @@ export default function PainelTecnicoIndividualPage() {
       setErro(getErrorMessage(error));
     } finally {
       setSalvandoSolicitada(false);
+    }
+  }
+
+  async function registrarRetiradaMaterial() {
+    if (!usuario) return;
+
+    if (!materialRetiradaId) {
+      setErro("Escolha o material retirado.");
+      return;
+    }
+
+    if (!quantidadeRetirada || Number(quantidadeRetirada) <= 0) {
+      setErro("Informe uma quantidade maior que zero.");
+      return;
+    }
+
+    if (!motivoRetirada.trim()) {
+      setErro("Informe o motivo da retirada.");
+      return;
+    }
+
+    try {
+      setSalvandoRetirada(true);
+      const supabase = getSupabase();
+      const { error } = await supabase.rpc("registrar_movimentacao_estoque", {
+        material_id_input: materialRetiradaId,
+        tipo_input: "SAIDA",
+        quantidade_input: Number(quantidadeRetirada),
+        colaborador_id_input: usuario.id,
+        motivo_input: motivoRetirada,
+        observacao_input: "Retirada registrada pelo colaborador",
+        ordem_servico_id_input: null,
+        registrado_por_colaborador_id_input: usuario.id,
+      });
+
+      if (error) throw error;
+
+      alert("Retirada de material registrada com sucesso.");
+      limparRetiradaMaterial();
+      setRegistrandoRetirada(false);
+      setErro(null);
+      await buscarOrdens();
+    } catch (error) {
+      console.error("Erro ao registrar retirada de material:", error);
+      setErro(getErrorMessage(error));
+    } finally {
+      setSalvandoRetirada(false);
     }
   }
 
@@ -443,17 +526,31 @@ export default function PainelTecnicoIndividualPage() {
           </div>
         </header>
 
-        <button
-          type="button"
-          onClick={() => {
-            setRegistrandoSolicitada(true);
-            setErro(null);
-          }}
-          className="inline-flex items-center justify-center gap-2 rounded-2xl bg-emerald-600 px-4 py-3 text-sm font-bold text-white shadow-lg transition hover:bg-emerald-700"
-        >
-          <PlusCircle size={18} aria-hidden="true" />
-          Registrar ocorrencia
-        </button>
+        <div className="grid gap-2 sm:grid-cols-2">
+          <button
+            type="button"
+            onClick={() => {
+              setRegistrandoSolicitada(true);
+              setErro(null);
+            }}
+            className="inline-flex items-center justify-center gap-2 rounded-2xl bg-emerald-600 px-4 py-3 text-sm font-bold text-white shadow-lg transition hover:bg-emerald-700"
+          >
+            <PlusCircle size={18} aria-hidden="true" />
+            Registrar ocorrencia
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              setRegistrandoRetirada(true);
+              setErro(null);
+            }}
+            disabled={materiaisEstoque.length === 0}
+            className="inline-flex items-center justify-center gap-2 rounded-2xl bg-slate-900 px-4 py-3 text-sm font-bold text-white shadow-lg transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            <PackageMinus size={18} aria-hidden="true" />
+            Retirar material
+          </button>
+        </div>
 
         <div className="rounded-3xl border border-slate-200 bg-white shadow-xl">
           <div className="flex items-center justify-between border-b border-slate-100 p-4">
@@ -913,6 +1010,100 @@ export default function PainelTecnicoIndividualPage() {
                 className="rounded-xl bg-emerald-600 px-4 py-3 text-sm font-bold text-white transition hover:bg-emerald-700 disabled:opacity-60"
               >
                 {salvandoSolicitada ? "Salvando..." : "Enviar ocorrencia"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {registrandoRetirada && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/50 px-4 py-6">
+          <div className="w-full max-w-md rounded-3xl bg-white shadow-xl">
+            <div className="flex items-start justify-between gap-3 border-b border-slate-100 p-5">
+              <div>
+                <p className="text-xs font-bold uppercase tracking-wide text-slate-700">
+                  Estoque
+                </p>
+                <h2 className="mt-1 text-xl font-bold text-slate-950">
+                  Retirada de material
+                </h2>
+                <p className="mt-1 text-sm text-slate-500">
+                  Registre uma retirada avulsa que nao depende de OS.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setRegistrandoRetirada(false)}
+                className="rounded-lg p-2 text-slate-500 transition hover:bg-slate-100"
+                aria-label="Fechar retirada"
+              >
+                <X size={18} aria-hidden="true" />
+              </button>
+            </div>
+
+            <div className="space-y-4 p-5">
+              <label className="block">
+                <span className="mb-1 block text-sm font-semibold text-slate-700">
+                  Material *
+                </span>
+                <select
+                  value={materialRetiradaId}
+                  onChange={(event) => setMaterialRetiradaId(event.target.value)}
+                  className="h-11 w-full rounded-xl border border-slate-300 px-3 text-sm outline-none focus:ring-2 focus:ring-slate-100"
+                >
+                  <option value="">Escolha o material</option>
+                  {materiaisEstoque.map((material) => (
+                    <option key={material.id} value={material.id}>
+                      {material.nome} - saldo:{" "}
+                      {Number(material.quantidade_atual ?? 0)} {material.unidade}
+                    </option>
+                  ))}
+                </select>
+              </label>
+
+              <label className="block">
+                <span className="mb-1 block text-sm font-semibold text-slate-700">
+                  Quantidade *
+                </span>
+                <input
+                  type="number"
+                  value={quantidadeRetirada}
+                  onChange={(event) => setQuantidadeRetirada(event.target.value)}
+                  className="h-11 w-full rounded-xl border border-slate-300 px-3 text-sm outline-none focus:ring-2 focus:ring-slate-100"
+                  placeholder="Ex: 1"
+                />
+              </label>
+
+              <label className="block">
+                <span className="mb-1 block text-sm font-semibold text-slate-700">
+                  Motivo *
+                </span>
+                <textarea
+                  value={motivoRetirada}
+                  onChange={(event) => setMotivoRetirada(event.target.value)}
+                  rows={3}
+                  className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-slate-100"
+                  placeholder="Ex: cafe para copa, material de limpeza, reposicao..."
+                />
+              </label>
+            </div>
+
+            <div className="flex flex-col-reverse gap-2 border-t border-slate-100 p-5 sm:flex-row sm:justify-end">
+              <button
+                type="button"
+                onClick={() => setRegistrandoRetirada(false)}
+                disabled={salvandoRetirada}
+                className="rounded-xl border border-slate-300 px-4 py-3 text-sm font-bold text-slate-700 transition hover:bg-slate-50 disabled:opacity-60"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={registrarRetiradaMaterial}
+                disabled={salvandoRetirada}
+                className="rounded-xl bg-slate-900 px-4 py-3 text-sm font-bold text-white transition hover:bg-slate-800 disabled:opacity-60"
+              >
+                {salvandoRetirada ? "Salvando..." : "Registrar retirada"}
               </button>
             </div>
           </div>
