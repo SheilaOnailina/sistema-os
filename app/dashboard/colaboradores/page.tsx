@@ -57,6 +57,15 @@ function getErrorMessage(error: unknown) {
   return error instanceof Error ? error.message : "Nao foi possivel concluir.";
 }
 
+function isForeignKeyError(error: unknown) {
+  return (
+    typeof error === "object" &&
+    error !== null &&
+    "code" in error &&
+    error.code === "23503"
+  );
+}
+
 function formatDate(value?: string | null) {
   if (!value) return "-";
 
@@ -92,6 +101,7 @@ export default function ColaboradoresPage() {
     useState<Colaborador | null>(null);
   const [formEdicao, setFormEdicao] = useState<FormState>(initialForm);
   const [busca, setBusca] = useState("");
+  const [mostrarInativos, setMostrarInativos] = useState(false);
   const [carregando, setCarregando] = useState(true);
   const [salvando, setSalvando] = useState(false);
   const [salvandoEdicao, setSalvandoEdicao] = useState(false);
@@ -174,9 +184,13 @@ export default function ColaboradoresPage() {
 
   const colaboradoresFiltrados = useMemo(() => {
     const termo = busca.trim().toLowerCase();
-    if (!termo) return colaboradores;
+    const listaBase = mostrarInativos
+      ? colaboradores
+      : colaboradores.filter((colaborador) => colaborador.ativo);
 
-    return colaboradores.filter((colaborador) => {
+    if (!termo) return listaBase;
+
+    return listaBase.filter((colaborador) => {
       const texto = [
         colaborador.nome,
         colaborador.cpf,
@@ -189,7 +203,7 @@ export default function ColaboradoresPage() {
 
       return texto.includes(termo);
     });
-  }, [busca, colaboradores]);
+  }, [busca, colaboradores, mostrarInativos]);
 
   async function cadastrarColaborador(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -392,7 +406,7 @@ export default function ColaboradoresPage() {
 
   async function excluirColaborador(colaborador: Colaborador) {
     const confirmou = window.confirm(
-      `Excluir ${colaborador.nome} da lista de colaboradores? Esta acao nao pode ser desfeita.`,
+      `Remover ${colaborador.nome} da lista de colaboradores? Se houver historico vinculado, o sistema vai apenas ocultar o cadastro para preservar os registros.`,
     );
 
     if (!confirmou) return;
@@ -407,7 +421,22 @@ export default function ColaboradoresPage() {
         .delete()
         .eq("id", colaborador.id);
 
-      if (error) throw error;
+      if (error) {
+        if (!isForeignKeyError(error)) throw error;
+
+        const { error: erroDesativar } = await supabase
+          .from("colaboradores")
+          .update({ ativo: false })
+          .eq("id", colaborador.id);
+
+        if (erroDesativar) throw erroDesativar;
+
+        setSucesso(
+          "Colaborador removido da lista. O historico dele foi preservado.",
+        );
+        await carregarColaboradores();
+        return;
+      }
 
       setSucesso("Colaborador excluido da lista.");
       await carregarColaboradores();
@@ -584,20 +613,30 @@ export default function ColaboradoresPage() {
                 </div>
               </div>
 
-              <label className="relative block w-full md:w-80">
-                <Search
-                  size={16}
-                  className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"
-                  aria-hidden="true"
-                />
-                <span className="sr-only">Buscar colaborador</span>
-                <input
-                  value={busca}
-                  onChange={(event) => setBusca(event.target.value)}
-                  placeholder="Buscar por nome, CPF ou perfil..."
-                  className="h-10 w-full rounded-md border border-slate-300 bg-white pl-9 pr-3 text-sm outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
-                />
-              </label>
+              <div className="flex w-full flex-col gap-2 md:w-auto md:flex-row md:items-center">
+                <button
+                  type="button"
+                  onClick={() => setMostrarInativos((valor) => !valor)}
+                  className="h-10 rounded-md border border-slate-300 px-3 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
+                >
+                  {mostrarInativos ? "Ocultar inativos" : "Ver inativos"}
+                </button>
+
+                <label className="relative block w-full md:w-80">
+                  <Search
+                    size={16}
+                    className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"
+                    aria-hidden="true"
+                  />
+                  <span className="sr-only">Buscar colaborador</span>
+                  <input
+                    value={busca}
+                    onChange={(event) => setBusca(event.target.value)}
+                    placeholder="Buscar por nome, CPF ou perfil..."
+                    className="h-10 w-full rounded-md border border-slate-300 bg-white pl-9 pr-3 text-sm outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                  />
+                </label>
+              </div>
             </div>
 
             <div className="overflow-x-auto">

@@ -1,4 +1,4 @@
-create extension if not exists pgcrypto;
+create extension if not exists pgcrypto with schema extensions;
 
 alter table public.colaboradores
   alter column cpf drop not null;
@@ -48,7 +48,7 @@ returns table (
 )
 language plpgsql
 security definer
-set search_path = public
+set search_path = public, extensions
 as $$
 declare
   login_texto text;
@@ -76,7 +76,7 @@ begin
       or lower(regexp_replace(trim(c.nome), '\s+', ' ', 'g')) = login_texto
       or lower(regexp_replace(trim(c.nome), '\s+', ' ', 'g')) like '%' || login_texto || '%'
     )
-    and c.senha_hash = crypt(senha_input, c.senha_hash)
+    and c.senha_hash = extensions.crypt(senha_input, c.senha_hash)
   order by c.criado_em asc
   limit 1;
 end;
