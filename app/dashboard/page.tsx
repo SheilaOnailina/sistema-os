@@ -167,12 +167,9 @@ function formatDate(value?: string | null) {
   }).format(new Date(value));
 }
 
-function inicioDaSemanaAtualDate() {
+function inicioDoMesAtualDate() {
   const hoje = new Date();
-  const diaDaSemana = hoje.getDay();
-  const diasDesdeSegunda = diaDaSemana === 0 ? 6 : diaDaSemana - 1;
-  const inicio = new Date(hoje);
-  inicio.setDate(hoje.getDate() - diasDesdeSegunda);
+  const inicio = new Date(hoje.getFullYear(), hoje.getMonth(), 1);
   inicio.setHours(0, 0, 0, 0);
   return inicio;
 }
@@ -257,7 +254,7 @@ export default function DashboardPage() {
   const [filtroDashboard, setFiltroDashboard] = useState<FiltroDashboard>(null);
   const [mostrarRelatorioOS, setMostrarRelatorioOS] = useState(false);
   const [dataInicialOS, setDataInicialOS] = useState(() =>
-    toInputDate(inicioDaSemanaAtualDate()),
+    toInputDate(inicioDoMesAtualDate()),
   );
   const [dataFinalOS, setDataFinalOS] = useState(() => toInputDate(new Date()));
   const [filtroColaboradorId, setFiltroColaboradorId] = useState<string | null>(
@@ -795,7 +792,7 @@ export default function DashboardPage() {
   }
 
   function limparRelatorioOS() {
-    setDataInicialOS(toInputDate(inicioDaSemanaAtualDate()));
+    setDataInicialOS(toInputDate(inicioDoMesAtualDate()));
     setDataFinalOS(toInputDate(new Date()));
     setFiltroDashboard(null);
     setFiltroColaboradorId(null);
@@ -1152,7 +1149,7 @@ export default function DashboardPage() {
                 Resumo de OS
               </h2>
               <p className="text-sm text-slate-500">
-                Por padrao, os cards mostram somente a semana atual.
+                Por padrao, os cards mostram o mes atual.
               </p>
             </div>
             <div className="grid gap-2 sm:grid-cols-[1fr_1fr_auto_auto]">
