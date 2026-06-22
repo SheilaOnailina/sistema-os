@@ -1198,7 +1198,7 @@ export default function DashboardPage() {
           </div>
         </section>
 
-        <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
+        <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-6">
           <Indicador
             titulo="Total de OS"
             valor={indicadores.total}
@@ -1234,6 +1234,19 @@ export default function DashboardPage() {
             ativo={filtroDashboard === "EM_EXECUCAO"}
             onClick={() => {
               setFiltroDashboard("EM_EXECUCAO");
+              setFiltroColaboradorId(null);
+              setMostrarRelatorioOS(true);
+            }}
+          />
+          <Indicador
+            titulo="Concluidas"
+            valor={indicadores.concluidas}
+            detalhe="Historico do periodo"
+            icon={CheckCircle2}
+            carregando={carregando}
+            ativo={filtroDashboard === "CONCLUIDA"}
+            onClick={() => {
+              setFiltroDashboard("CONCLUIDA");
               setFiltroColaboradorId(null);
               setMostrarRelatorioOS(true);
             }}
