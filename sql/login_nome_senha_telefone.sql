@@ -93,7 +93,7 @@ create or replace function public.cadastrar_colaborador(
 returns setof public.colaboradores
 language plpgsql
 security definer
-set search_path = public
+set search_path = public, extensions
 as $$
 declare
   senha_inicial text;
@@ -119,7 +119,7 @@ begin
     nullif(regexp_replace(coalesce(telefone_input, ''), '\D', '', 'g'), ''),
     perfil_input,
     true,
-    crypt(senha_inicial, gen_salt('bf')),
+    extensions.crypt(senha_inicial, extensions.gen_salt('bf')),
     true
   )
   returning *;
@@ -132,7 +132,7 @@ create or replace function public.resetar_senha_colaborador(
 returns boolean
 language plpgsql
 security definer
-set search_path = public
+set search_path = public, extensions
 as $$
 declare
   colaborador public.colaboradores;
@@ -154,7 +154,7 @@ begin
 
   update public.colaboradores
   set
-    senha_hash = crypt(senha_inicial, gen_salt('bf')),
+    senha_hash = extensions.crypt(senha_inicial, extensions.gen_salt('bf')),
     precisa_trocar_senha = true
   where id = colaborador_id_input;
 
