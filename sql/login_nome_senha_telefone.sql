@@ -54,7 +54,7 @@ declare
   login_texto text;
   login_numeros text;
 begin
-  login_texto := lower(trim(coalesce(cpf_input, '')));
+  login_texto := lower(regexp_replace(trim(coalesce(cpf_input, '')), '\s+', ' ', 'g'));
   login_numeros := regexp_replace(coalesce(cpf_input, ''), '\D', '', 'g');
 
   return query
@@ -69,8 +69,12 @@ begin
   from public.colaboradores c
   where c.ativo = true
     and (
-      regexp_replace(coalesce(c.cpf, ''), '\D', '', 'g') = login_numeros
-      or lower(trim(c.nome)) = login_texto
+      (
+        login_numeros <> ''
+        and regexp_replace(coalesce(c.cpf, ''), '\D', '', 'g') = login_numeros
+      )
+      or lower(regexp_replace(trim(c.nome), '\s+', ' ', 'g')) = login_texto
+      or lower(regexp_replace(trim(c.nome), '\s+', ' ', 'g')) like '%' || login_texto || '%'
     )
     and c.senha_hash = crypt(senha_input, c.senha_hash)
   order by c.criado_em asc
