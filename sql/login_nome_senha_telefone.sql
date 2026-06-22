@@ -1,5 +1,8 @@
 create extension if not exists pgcrypto;
 
+alter table public.colaboradores
+  alter column cpf drop not null;
+
 drop function if exists public.login_colaborador(text, text);
 drop function if exists public.resetar_senha_colaborador(uuid);
 
@@ -66,7 +69,7 @@ begin
   from public.colaboradores c
   where c.ativo = true
     and (
-      regexp_replace(c.cpf, '\D', '', 'g') = login_numeros
+      regexp_replace(coalesce(c.cpf, ''), '\D', '', 'g') = login_numeros
       or lower(trim(c.nome)) = login_texto
     )
     and c.senha_hash = crypt(senha_input, c.senha_hash)
@@ -108,7 +111,7 @@ begin
   )
   values (
     trim(nome_input),
-    regexp_replace(cpf_input, '\D', '', 'g'),
+    nullif(regexp_replace(coalesce(cpf_input, ''), '\D', '', 'g'), ''),
     nullif(regexp_replace(coalesce(telefone_input, ''), '\D', '', 'g'), ''),
     perfil_input,
     true,

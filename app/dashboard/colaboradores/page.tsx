@@ -199,13 +199,18 @@ export default function ColaboradoresPage() {
     const cpfLimpo = onlyNumbers(form.cpf);
     const telefoneLimpo = onlyNumbers(form.telefone);
 
-    if (!form.nome.trim() || !cpfLimpo) {
-      setErro("Informe nome e CPF.");
+    if (!form.nome.trim()) {
+      setErro("Informe o nome do colaborador.");
       return;
     }
 
-    if (cpfLimpo.length !== 11) {
+    if (cpfLimpo && cpfLimpo.length !== 11) {
       setErro("O CPF precisa ter 11 numeros.");
+      return;
+    }
+
+    if (telefoneLimpo.length < 6) {
+      setErro("Informe um telefone com pelo menos 6 numeros para a senha inicial.");
       return;
     }
 
@@ -214,7 +219,7 @@ export default function ColaboradoresPage() {
       const supabase = getSupabase();
       const { data, error } = await supabase.rpc("cadastrar_colaborador", {
         nome_input: form.nome.trim(),
-        cpf_input: cpfLimpo,
+        cpf_input: cpfLimpo || null,
         telefone_input: telefoneLimpo || null,
         perfil_input: form.perfil,
       });
@@ -278,7 +283,7 @@ export default function ColaboradoresPage() {
     setColaboradorEmEdicao(colaborador);
     setFormEdicao({
       nome: colaborador.nome,
-      cpf: colaborador.cpf,
+      cpf: colaborador.cpf ?? "",
       telefone: colaborador.telefone ?? "",
       perfil: colaborador.perfil,
       permissao_modulo_manutencao:
@@ -302,13 +307,18 @@ export default function ColaboradoresPage() {
     const cpfLimpo = onlyNumbers(formEdicao.cpf);
     const telefoneLimpo = onlyNumbers(formEdicao.telefone);
 
-    if (!formEdicao.nome.trim() || !cpfLimpo) {
-      setErro("Informe nome e CPF para salvar.");
+    if (!formEdicao.nome.trim()) {
+      setErro("Informe o nome para salvar.");
       return;
     }
 
-    if (cpfLimpo.length !== 11) {
+    if (cpfLimpo && cpfLimpo.length !== 11) {
       setErro("O CPF precisa ter 11 numeros.");
+      return;
+    }
+
+    if (telefoneLimpo && telefoneLimpo.length < 6) {
+      setErro("O telefone precisa ter pelo menos 6 numeros.");
       return;
     }
 
@@ -319,7 +329,7 @@ export default function ColaboradoresPage() {
         .from("colaboradores")
         .update({
           nome: formEdicao.nome.trim(),
-          cpf: cpfLimpo,
+          cpf: cpfLimpo || null,
           telefone: telefoneLimpo || null,
           perfil: formEdicao.perfil,
           permissao_modulo_manutencao:
@@ -624,7 +634,7 @@ export default function ColaboradoresPage() {
                           {colaborador.nome}
                         </td>
                         <td className="whitespace-nowrap px-4 py-3 font-mono text-slate-600">
-                          {colaborador.cpf}
+                          {colaborador.cpf || "-"}
                         </td>
                         <td className="whitespace-nowrap px-4 py-3 text-slate-600">
                           {colaborador.telefone || "-"}

@@ -22,7 +22,7 @@ export type PeriodicidadeEstoque =
 export type Colaborador = {
   id: string;
   nome: string;
-  cpf: string;
+  cpf: string | null;
   telefone: string | null;
   perfil: PerfilColaborador;
   ativo: boolean;
@@ -125,7 +125,7 @@ type Database = {
       };
       colaboradores: {
         Row: Colaborador;
-        Insert: Partial<Colaborador> & Pick<Colaborador, "nome" | "cpf">;
+        Insert: Partial<Colaborador> & Pick<Colaborador, "nome">;
         Update: Partial<Colaborador>;
         Relationships: [];
       };
@@ -194,7 +194,7 @@ type Database = {
       cadastrar_colaborador: {
         Args: {
           nome_input: string;
-          cpf_input: string;
+          cpf_input: string | null;
           telefone_input: string | null;
           perfil_input: PerfilColaborador;
         };

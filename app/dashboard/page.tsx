@@ -451,7 +451,9 @@ export default function DashboardPage() {
 
     const ordensPorColaborador = filtroColaboradorId
       ? ordensPorFiltro.filter(
-          (ordem) => ordem.colaborador_id === filtroColaboradorId,
+          (ordem) =>
+            ordem.colaborador_id === filtroColaboradorId &&
+            ordem.status !== "CONCLUIDA",
         )
       : ordensPorFiltro;
 
