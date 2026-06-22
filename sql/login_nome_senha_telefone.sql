@@ -5,6 +5,8 @@ alter table public.colaboradores
 
 drop function if exists public.login_colaborador(text, text);
 drop function if exists public.resetar_senha_colaborador(uuid);
+drop function if exists public.alternar_status_colaborador(uuid, boolean);
+drop function if exists public.remover_colaborador(uuid);
 
 create or replace function public.senha_inicial_por_telefone(
   telefone_input text,
@@ -162,7 +164,58 @@ begin
 end;
 $$;
 
+create or replace function public.alternar_status_colaborador(
+  colaborador_id_input uuid,
+  ativo_input boolean
+)
+returns boolean
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  update public.colaboradores
+  set ativo = ativo_input
+  where id = colaborador_id_input;
+
+  return found;
+end;
+$$;
+
+create or replace function public.remover_colaborador(
+  colaborador_id_input uuid
+)
+returns text
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  delete from public.colaboradores
+  where id = colaborador_id_input;
+
+  if found then
+    return 'EXCLUIDO';
+  end if;
+
+  return 'NAO_ENCONTRADO';
+exception
+  when foreign_key_violation then
+    update public.colaboradores
+    set ativo = false
+    where id = colaborador_id_input;
+
+    if found then
+      return 'DESATIVADO_COM_HISTORICO';
+    end if;
+
+    return 'NAO_ENCONTRADO';
+end;
+$$;
+
 grant execute on function public.senha_inicial_por_telefone(text, text) to anon;
 grant execute on function public.login_colaborador(text, text) to anon;
 grant execute on function public.cadastrar_colaborador(text, text, text, text) to anon;
 grant execute on function public.resetar_senha_colaborador(uuid) to anon;
+grant execute on function public.alternar_status_colaborador(uuid, boolean) to anon;
+grant execute on function public.remover_colaborador(uuid) to anon;

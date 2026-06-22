@@ -57,15 +57,6 @@ function getErrorMessage(error: unknown) {
   return error instanceof Error ? error.message : "Nao foi possivel concluir.";
 }
 
-function isForeignKeyError(error: unknown) {
-  return (
-    typeof error === "object" &&
-    error !== null &&
-    "code" in error &&
-    error.code === "23503"
-  );
-}
-
 function formatDate(value?: string | null) {
   if (!value) return "-";
 
@@ -274,12 +265,17 @@ export default function ColaboradoresPage() {
 
     try {
       const supabase = getSupabase();
-      const { error } = await supabase
-        .from("colaboradores")
-        .update({ ativo: !colaborador.ativo })
-        .eq("id", colaborador.id);
+      const { data, error } = await supabase.rpc("alternar_status_colaborador", {
+        colaborador_id_input: colaborador.id,
+        ativo_input: !colaborador.ativo,
+      });
 
       if (error) throw error;
+
+      if (!data) {
+        setErro("Nao foi possivel atualizar o status do colaborador.");
+        return;
+      }
 
       setSucesso(
         colaborador.ativo
@@ -416,25 +412,22 @@ export default function ColaboradoresPage() {
 
     try {
       const supabase = getSupabase();
-      const { error } = await supabase
-        .from("colaboradores")
-        .delete()
-        .eq("id", colaborador.id);
+      const { data, error } = await supabase.rpc("remover_colaborador", {
+        colaborador_id_input: colaborador.id,
+      });
 
-      if (error) {
-        if (!isForeignKeyError(error)) throw error;
+      if (error) throw error;
 
-        const { error: erroDesativar } = await supabase
-          .from("colaboradores")
-          .update({ ativo: false })
-          .eq("id", colaborador.id);
-
-        if (erroDesativar) throw erroDesativar;
-
+      if (data === "DESATIVADO_COM_HISTORICO") {
         setSucesso(
           "Colaborador removido da lista. O historico dele foi preservado.",
         );
         await carregarColaboradores();
+        return;
+      }
+
+      if (data === "NAO_ENCONTRADO") {
+        setErro("Colaborador nao encontrado.");
         return;
       }
 

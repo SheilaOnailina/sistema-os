@@ -206,6 +206,19 @@ type Database = {
         };
         Returns: boolean;
       };
+      alternar_status_colaborador: {
+        Args: {
+          colaborador_id_input: string;
+          ativo_input: boolean;
+        };
+        Returns: boolean;
+      };
+      remover_colaborador: {
+        Args: {
+          colaborador_id_input: string;
+        };
+        Returns: "EXCLUIDO" | "DESATIVADO_COM_HISTORICO" | "NAO_ENCONTRADO";
+      };
       criar_ordem_servico: {
         Args: {
           solicitante_input: string;
