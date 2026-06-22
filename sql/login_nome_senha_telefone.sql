@@ -3,6 +3,12 @@ create extension if not exists pgcrypto with schema extensions;
 alter table public.colaboradores
   alter column cpf drop not null;
 
+alter table if exists public.ocorrencias
+  alter column registrado_por_colaborador_id drop not null;
+
+alter table if exists public.solicitacoes_materiais
+  alter column colaborador_id drop not null;
+
 drop function if exists public.login_colaborador(text, text);
 drop function if exists public.resetar_senha_colaborador(uuid);
 drop function if exists public.alternar_status_colaborador(uuid, boolean);
@@ -191,6 +197,46 @@ security definer
 set search_path = public
 as $$
 begin
+  update public.ordens_servico
+  set colaborador_id = null
+  where colaborador_id = colaborador_id_input;
+
+  update public.ocorrencias
+  set
+    registrado_por_colaborador_id = null,
+    avaliado_por_gestor_id = case
+      when avaliado_por_gestor_id = colaborador_id_input then null
+      else avaliado_por_gestor_id
+    end
+  where registrado_por_colaborador_id = colaborador_id_input
+    or avaliado_por_gestor_id = colaborador_id_input;
+
+  update public.movimentacoes_estoque
+  set
+    colaborador_id = case
+      when colaborador_id = colaborador_id_input then null
+      else colaborador_id
+    end,
+    registrado_por_colaborador_id = case
+      when registrado_por_colaborador_id = colaborador_id_input then null
+      else registrado_por_colaborador_id
+    end
+  where colaborador_id = colaborador_id_input
+    or registrado_por_colaborador_id = colaborador_id_input;
+
+  update public.solicitacoes_materiais
+  set
+    colaborador_id = case
+      when colaborador_id = colaborador_id_input then null
+      else colaborador_id
+    end,
+    respondido_por_colaborador_id = case
+      when respondido_por_colaborador_id = colaborador_id_input then null
+      else respondido_por_colaborador_id
+    end
+  where colaborador_id = colaborador_id_input
+    or respondido_por_colaborador_id = colaborador_id_input;
+
   delete from public.colaboradores
   where id = colaborador_id_input;
 
@@ -201,15 +247,7 @@ begin
   return 'NAO_ENCONTRADO';
 exception
   when foreign_key_violation then
-    update public.colaboradores
-    set ativo = false
-    where id = colaborador_id_input;
-
-    if found then
-      return 'DESATIVADO_COM_HISTORICO';
-    end if;
-
-    return 'NAO_ENCONTRADO';
+    raise exception 'Nao foi possivel excluir: ainda existe algum vinculo desse colaborador no banco.';
 end;
 $$;
 

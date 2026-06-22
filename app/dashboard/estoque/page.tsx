@@ -821,7 +821,9 @@ export default function EstoquePage() {
               <div className="grid gap-3 lg:grid-cols-2">
                 {solicitacoesPendentes.map((solicitacao) => {
                   const material = nomesMateriais[solicitacao.material_id];
-                  const colaborador = nomesColaboradores[solicitacao.colaborador_id];
+                  const colaborador = solicitacao.colaborador_id
+                    ? nomesColaboradores[solicitacao.colaborador_id]
+                    : "Sem colaborador vinculado";
                   const materialCompleto = materiais.find(
                     (item) => item.id === solicitacao.material_id,
                   );

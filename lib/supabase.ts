@@ -53,7 +53,7 @@ export type OrdemServico = {
 export type Ocorrencia = {
   id: string;
   numero_ocorrencia: string | number;
-  registrado_por_colaborador_id: string;
+  registrado_por_colaborador_id: string | null;
   tipo: string;
   local: string;
   descricao: string;
@@ -103,7 +103,7 @@ export type UnidadeMedida = {
 export type SolicitacaoMaterial = {
   id: string;
   material_id: string;
-  colaborador_id: string;
+  colaborador_id: string | null;
   quantidade: number;
   motivo: string;
   status: "PENDENTE" | "AUTORIZADA" | "RECUSADA" | string;
@@ -217,7 +217,7 @@ type Database = {
         Args: {
           colaborador_id_input: string;
         };
-        Returns: "EXCLUIDO" | "DESATIVADO_COM_HISTORICO" | "NAO_ENCONTRADO";
+        Returns: "EXCLUIDO" | "NAO_ENCONTRADO";
       };
       criar_ordem_servico: {
         Args: {

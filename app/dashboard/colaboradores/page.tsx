@@ -402,7 +402,7 @@ export default function ColaboradoresPage() {
 
   async function excluirColaborador(colaborador: Colaborador) {
     const confirmou = window.confirm(
-      `Remover ${colaborador.nome} da lista de colaboradores? Se houver historico vinculado, o sistema vai apenas ocultar o cadastro para preservar os registros.`,
+      `Excluir definitivamente ${colaborador.nome} do banco de dados? As OS e registros antigos ficarao sem colaborador vinculado.`,
     );
 
     if (!confirmou) return;
@@ -418,20 +418,12 @@ export default function ColaboradoresPage() {
 
       if (error) throw error;
 
-      if (data === "DESATIVADO_COM_HISTORICO") {
-        setSucesso(
-          "Colaborador removido da lista. O historico dele foi preservado.",
-        );
-        await carregarColaboradores();
-        return;
-      }
-
       if (data === "NAO_ENCONTRADO") {
         setErro("Colaborador nao encontrado.");
         return;
       }
 
-      setSucesso("Colaborador excluido da lista.");
+      setSucesso("Colaborador excluido definitivamente do banco.");
       await carregarColaboradores();
     } catch (error) {
       console.error("Erro ao excluir colaborador:", error);

@@ -991,9 +991,11 @@ export default function DashboardPage() {
                       </p>
                       <p className="mt-2 text-xs text-slate-500">
                         Registrado por:{" "}
-                        {nomesColaboradores[
-                          ocorrencia.registrado_por_colaborador_id
-                        ] || "Colaborador nao encontrado"}
+                        {ocorrencia.registrado_por_colaborador_id
+                          ? nomesColaboradores[
+                              ocorrencia.registrado_por_colaborador_id
+                            ] || "Colaborador nao encontrado"
+                          : "Sem colaborador vinculado"}
                       </p>
                     </div>
 
